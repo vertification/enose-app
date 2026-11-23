@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>전자코사인 데모</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#16233a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="전자코사인">
+<style>
+/* Layout: phone app with a fixed bottom tab bar (홈 / 분석 / 기록 / 설정). One view visible at a time; 측정 시작 opens as a bottom sheet. */
+:root{
+  --bg:#f3f5f7; --surface:#fcfcfd; --ink:#0e1116; --ink2:#4a5260; --muted:#7b8494;
+  --grid:#e3e6ea; --axis:#c4c9d1; --ring:rgba(14,17,22,.10); --shade:rgba(14,17,22,.45);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --good-ink:#006300; --warn-ink:#8a5a00; --crit-ink:#b42828;
+  --font:system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --shade:rgba(0,0,0,.6);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10); --shade:rgba(0,0,0,.6);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70;
+  --good-ink:#0ca30c; --warn-ink:#fab219; --crit-ink:#e66767; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:560px;margin:0 auto}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-block:14px 10px}
+h1{font-size:18px;margin:0;letter-spacing:-.3px}
+.meta{color:var(--ink2);font-size:12.5px;font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:12px;font-weight:600;
+  background:var(--surface);border:1px solid var(--ring);color:var(--ink2);white-space:nowrap}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.chip.on i{background:var(--good)}.chip.off{color:var(--crit-ink)}.chip.off i{background:var(--crit)}
+.view{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:16px;padding:14px}
+h2{font-size:13px;margin:0 0 10px;color:var(--ink2);font-weight:700;letter-spacing:.2px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.muted{color:var(--ink2);font-size:13px}
+.small{font-size:12px;color:var(--ink2)}
+.demo{font-size:11px;font-weight:700;color:var(--warn-ink);border:1px solid currentColor;border-radius:99px;padding:1px 7px;white-space:nowrap}
+a{color:var(--s1);font-weight:600}
+button{font:inherit;color:inherit}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+button:active{opacity:.75}
+.btn{padding:13px 14px;border:1px solid var(--ring);border-radius:12px;background:var(--surface);color:var(--ink);font-weight:700;font-size:15px;cursor:pointer;text-align:center}
+.btn small{display:block;font-weight:500;font-size:11.5px;color:var(--ink2);margin-top:2px}
+.btn.primary{background:var(--s1);border-color:transparent;color:#fff}
+.btn.primary small{color:#ffffffcc}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+
+/* offline */
+.offline{border-color:var(--crit);background:var(--surface);background:color-mix(in srgb,var(--crit) 8%,var(--surface))}
+.offline b{color:var(--crit-ink)}
+
+/* verdict hero */
+.verdict{--st:var(--muted);--st-ink:var(--ink2);padding:20px 16px 16px;background:var(--surface);background:color-mix(in srgb,var(--st) 10%,var(--surface))}
+.verdict.ok{--st:var(--good);--st-ink:var(--good-ink)}
+.verdict.wr{--st:var(--warn);--st-ink:var(--warn-ink)}
+.verdict.bad{--st:var(--crit);--st-ink:var(--crit-ink)}
+.vrow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.vlabel{font-size:12px;color:var(--ink2);font-weight:600}
+.vword{font-size:44px;font-weight:800;letter-spacing:-1.5px;color:var(--st-ink);line-height:1.05}
+.vword .ic{font-size:24px;vertical-align:6px;margin-right:6px}
+.vrr{text-align:right}
+.vrr b{display:block;font-size:26px;font-variant-numeric:tabular-nums}
+.vrr span{font-size:12px;color:var(--ink2)}
+.gauge{margin-top:16px}
+.track{height:10px;border-radius:5px;overflow:hidden;display:flex;gap:2px}
+.track div{height:100%}
+.z0{background:color-mix(in srgb,var(--good) 35%,var(--surface))}
+.z1{background:color-mix(in srgb,var(--warn) 45%,var(--surface))}
+.z2{background:color-mix(in srgb,var(--crit) 40%,var(--surface))}
+.gwrap{position:relative}
+.pin{position:absolute;top:-4px;width:4px;height:18px;margin-left:-2px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 2px var(--surface)}
+.gticks{position:relative;height:16px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gticks span{position:absolute;top:2px;transform:translateX(-50%);white-space:nowrap}
+.perfood{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid currentColor;background:var(--surface)}
+.pill.cause{box-shadow:0 0 0 1px currentColor}
+.ok-t{color:var(--good-ink)}.wr-t{color:var(--warn-ink)}.bad-t{color:var(--crit-ink)}.wait-t{color:var(--ink2)}
+.vfoot{margin-top:8px;font-size:12.5px;color:var(--ink2)}
+.vwarn{margin-top:6px;font-size:12.5px;font-weight:600;color:var(--warn-ink)}
+
+/* eta */
+.etaBig{font-size:24px;font-weight:800;letter-spacing:-.5px;margin-top:8px;font-variant-numeric:tabular-nums}
+.etaBig small{font-size:14px;font-weight:600;color:var(--ink2);margin-left:4px}
+/* sparkline (history cards) */
+.spark{display:block;width:100%;height:40px;margin-top:10px}
+
+/* timeline */
+.tl{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;background:var(--grid)}
+.tl div{height:100%}
+.tl .s-1{background:var(--grid)}.tl .s0{background:var(--good)}.tl .s1{background:var(--warn)}.tl .s2{background:var(--crit)}
+.tlwrap{position:relative;margin-top:2px}
+.tlmark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);border-radius:1px}
+.tlticks{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:3px;border-radius:2px}
+.legend i.sq{width:10px;height:10px;border-radius:3px}
+
+/* stats */
+.stat .lbl{font-size:11.5px;color:var(--ink2)}
+.stat .val{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat{text-align:center}
+
+/* sensors */
+.sensor{padding:12px 10px}
+.sname{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2);font-weight:700}
+.sname i{width:10px;height:3px;border-radius:2px;flex:none}
+.sgas{font-size:11.5px;color:var(--muted)}
+.sval{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;line-height:1.2}
+.sval small{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px}
+.sat{font-size:11px;font-weight:700;color:var(--crit-ink)}
+
+/* chart */
+.seg{display:inline-flex;border:1px solid var(--ring);border-radius:10px;padding:2px;background:var(--bg)}
+.seg button{border:0;background:none;padding:6px 11px;border-radius:8px;font-weight:600;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px var(--ring)}
+.seg.wide{display:flex;width:100%}.seg.wide button{flex:1;padding:10px 6px;font-size:14px}
+.cbox{position:relative;margin-top:10px}
+canvas{width:100%;height:220px;display:block;touch-action:pan-y}
+.tip{position:absolute;top:4px;pointer-events:none;background:var(--surface);border:1px solid var(--ring);border-radius:8px;
+  padding:6px 8px;font-size:12px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.12);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tip b{display:inline-block;width:8px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+
+/* pattern */
+.pbars{display:flex;flex-direction:column;gap:10px}
+.prow{display:grid;grid-template-columns:78px 1fr 48px;align-items:center;gap:8px;font-size:12.5px}
+.prow .pl{color:var(--ink2);font-weight:700;line-height:1.25}
+.prow .pl small{display:block;font-weight:500;font-size:11px;color:var(--muted)}
+.prow .pv{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.ptrack{position:relative;height:10px;border-radius:5px;background:var(--grid)}
+.pfill{position:absolute;left:0;top:0;bottom:0;border-radius:5px}
+.pmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--crit-ink);border-radius:1px}
+.ptxt{margin-top:12px;font-size:13.5px}
+.ptxt small{display:block;color:var(--ink2);font-size:12px;margin-top:2px}
+
+/* history */
+.runs{display:flex;flex-direction:column;gap:10px}
+.run{display:block;width:100%;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--ring);border-radius:16px;padding:14px}
+.run .rt{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700}
+.run .rs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.run .rm{margin-top:6px;font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.live{font-size:11px;font-weight:700;color:#fff;background:var(--s1);border-radius:99px;padding:1px 8px}
+.back{border:0;background:none;color:var(--s1);font-weight:700;padding:4px 0;cursor:pointer}
+.log{list-style:none;margin:0;padding:0;font-size:13.5px}
+.log li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--grid);font-variant-numeric:tabular-nums}
+.log li:first-child{border-top:0}
+
+/* settings */
+.fnote{margin-top:8px;font-size:12.5px;color:var(--ink2)}
+select,input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:9px 10px;width:100%}
+input{text-align:center;font-variant-numeric:tabular-nums}
+.field{display:flex;flex-direction:column;gap:4px}
+.field .lbl{font-size:12px;color:var(--ink2)}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--grid)}
+.toggle:first-of-type{border-top:0}
+.sw{position:relative;width:46px;height:28px;border-radius:14px;border:0;background:var(--grid);cursor:pointer;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s}
+.sw[aria-checked="true"]{background:var(--good)}.sw[aria-checked="true"]::after{left:21px}
+dl.info{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:0;font-size:13.5px}
+dl.info dt{color:var(--ink2)}dl.info dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+
+/* tab bar */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--surface);border-top:1px solid var(--ring);
+  padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+nav.tabs .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+nav.tabs a{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;text-decoration:none;color:var(--muted);font-size:11.5px;font-weight:600;border-radius:10px}
+nav.tabs a svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs a[aria-current="page"]{color:var(--s1)}
+nav.tabs .dot{position:absolute;margin-left:18px;margin-top:-2px;width:8px;height:8px;border-radius:50%;background:var(--crit);display:none}
+
+/* sheet (측정 시작) */
+.shade{position:fixed;inset:0;background:var(--shade);z-index:20}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--bg);border-radius:20px 20px 0 0;max-height:88vh;overflow:auto;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet .in{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--axis);margin:0 auto 4px}
+.steps{display:flex;gap:6px}
+.steps i{flex:1;height:4px;border-radius:2px;background:var(--grid)}
+.steps i.on{background:var(--s1)}
+.sheet h3{font-size:20px;margin:4px 0 0;letter-spacing:-.3px}
+.prog{height:10px;border-radius:5px;background:var(--grid);overflow:hidden}
+.prog div{height:100%;background:var(--s1);border-radius:5px}
+
+/* alert */
+#alert{position:fixed;left:0;right:0;top:0;z-index:30;display:none;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px))}
+#alertBox{max-width:560px;margin:0 auto;padding:14px 16px;border-radius:14px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;justify-content:space-between;align-items:center;gap:12px}
+#alertBox small{display:block;font-weight:500;opacity:.92}
+#alertBox button{background:rgba(255,255,255,.25);border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
+[hidden]{display:none!important}
+@media (max-width:360px){.vword{font-size:36px}.sval{font-size:19px}}
+@media (prefers-reduced-motion:no-preference){.pin{transition:left .4s}}
+</style></head><body>
+<div id="demoBar" style="position:sticky;top:env(safe-area-inset-top,0px);z-index:8;background:#0e1116;color:#fff;font:600 12.5px var(--font);
+  padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+  <span style="flex:1 1 200px">미리보기 · 9월 냉장 72h 닭가슴살 실측 재생 · <span id="demoSpeed">80</span>배속</span>
+  <button type="button" id="demoPlay" style="background:#ffffff22;color:#fff;border:0;border-radius:7px;padding:6px 10px;font:inherit;cursor:pointer">일시정지</button>
+  <button type="button" id="demoFast" style="background:#ffffff22;color:#fff;border:0;border-radius:7px;padding:6px 10px;font:inherit;cursor:pointer">빠르게</button>
+  <button type="button" id="demoReset" style="background:#ffffff22;color:#fff;border:0;border-radius:7px;padding:6px 10px;font:inherit;cursor:pointer">처음부터</button>
+  <a id="demoReal" href="http://192.168.4.1/" style="flex:1 1 100%;text-align:center;background:#2a78d6;color:#fff;text-decoration:none;border-radius:8px;padding:9px 10px;font:700 13.5px var(--font)">실제 기기 연결 · ENose-Sensor Wi-Fi에서 192.168.4.1 열기</a>
+</div>
+<div id="alert" role="alert"><div id="alertBox"><span id="alertMsg"></span><button id="alertClose" type="button">확인</button></div></div>
+<div class="wrap">
+<header class="top">
+  <div><h1 id="title">전자코</h1><div class="meta"><span id="sid">–</span> · <span id="clock">–</span></div></div>
+  <span class="chip" id="st"><i></i><span id="stTxt">연결 중</span></span>
+</header>
+<div class="card offline" id="offline" hidden><b>ESP32와 연결이 끊겼어요.</b><div class="small">휴대폰 Wi-Fi가 <b id="offSsid">ENose-Sensor</b>에 연결돼 있는지, 기기 전원이 켜져 있는지 확인하세요. 다시 연결되면 자동으로 이어져요.</div></div>
+
+<!-- ===== 홈 ===== -->
+<section class="view" id="v-home">
+  <div class="card verdict" id="vcard" aria-live="polite">
+    <div class="vlabel" id="vlabel">지금 상태</div>
+    <div class="vrow">
+      <div class="vword"><span class="ic" id="vic">…</span><span id="vd">대기</span></div>
+      <div class="vrr"><b id="rr">–</b><span id="rrLbl">MQ136 응답률</span></div>
+    </div>
+    <div class="gauge" aria-hidden="true">
+      <div class="gwrap"><div class="track" id="track"><div class="z0"></div><div class="z1"></div><div class="z2"></div></div><div class="pin" id="pin" hidden></div></div>
+      <div class="gticks" id="gticks"></div>
+    </div>
+    <div class="perfood" id="perFood"></div>
+    <div class="vfoot" id="vfoot">기준값을 잡는 중이에요.</div>
+    <div class="vwarn" id="vwarn" hidden></div>
+  </div>
+
+  <div class="card eta" id="etaCard" hidden>
+    <div class="row"><h2 style="margin:0">예상 남은 시간</h2><span class="demo">추정</span></div>
+    <div class="etaBig" id="etaBig">–</div>
+    <div class="small" id="etaSub"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 style="margin:0">상태 변화</h2><span class="small" id="tlNow"></span></div>
+    <div class="tlwrap" style="margin-top:12px"><div class="tl" id="tl"></div><div class="tlmark" id="tlIns" hidden title="시료 투입"></div></div>
+    <div class="tlticks"><span id="tlStart">–</span><span id="tlEnd">–</span></div>
+    <div class="legend"><span><i class="sq" style="background:var(--good)"></i>정상</span><span><i class="sq" style="background:var(--warn)"></i>주의</span><span><i class="sq" style="background:var(--crit)"></i>부패</span><span><i style="background:var(--ink);width:2px;height:12px"></i>시료 투입</span></div>
+  </div>
+
+  <div class="card grid3">
+    <div class="stat"><div class="lbl">투입 후</div><div class="val" id="el">–</div></div>
+    <div class="stat"><div class="lbl">온도</div><div class="val" id="tp">–</div></div>
+    <div class="stat"><div class="lbl">습도</div><div class="val" id="hm">–</div></div>
+  </div>
+
+  <button type="button" class="btn primary" id="bStart">측정 시작 안내<small id="startSub">빈 용기 기준값 → 시료 투입까지 순서대로</small></button>
+  <div class="grid2">
+    <button type="button" class="btn" id="bBase">기준 설정<small>빈 용기 상태에서</small></button>
+    <button type="button" class="btn" id="bIns">시료 투입<small>넣은 직후에</small></button>
+  </div>
+</section>
+
+<!-- ===== 분석 ===== -->
+<section class="view" id="v-analysis" hidden>
+  <div class="grid3">
+    <div class="card sensor"><div class="sname"><i style="background:var(--s1)"></i>MQ135</div><div class="sgas">VOC·알코올</div><div class="sval" id="v1">–</div></div>
+    <div class="card sensor"><div class="sname"><i style="background:var(--s2)"></i>MQ136</div><div class="sgas">황화수소</div><div class="sval" id="v2">–</div></div>
+    <div class="card sensor"><div class="sname"><i style="background:var(--s3)"></i>MQ137</div><div class="sgas">암모니아</div><div class="sval" id="v3">–</div></div>
+  </div>
+  <div class="card">
+    <div class="row"><h2 style="margin:0">지금 측정</h2>
+      <div class="seg" role="group" aria-label="그래프 종류"><button type="button" data-m="rr" aria-pressed="true">응답률</button><button type="button" data-m="raw" aria-pressed="false">센서값</button></div></div>
+    <div class="cbox"><canvas id="cvA" aria-label="지금 측정 그래프"></canvas><div class="tip" hidden></div></div>
+    <div class="legend" id="lgA"></div>
+  </div>
+  <div class="card">
+    <div class="row" style="margin-bottom:10px"><h2 style="margin:0">가스 패턴</h2><span class="demo">데모 규칙</span></div>
+    <div class="pbars" id="pbars"></div>
+    <div class="ptxt" id="ptxt">기준값을 설정하면 세 센서의 변화를 비교해서 어떤 음식의 부패와 비슷한지 보여줘요.</div>
+  </div>
+</section>
+
+<!-- ===== 기록 ===== -->
+<section class="view" id="v-history" hidden>
+  <div id="histList" class="runs"><div class="muted">기록을 불러오는 중이에요…</div></div>
+  <div id="histDetail" class="view" hidden>
+    <button type="button" class="back" id="hBack">‹ 기록 목록</button>
+    <div class="card">
+      <div class="row"><h2 style="margin:0" id="hTitle">–</h2>
+        <div class="seg" role="group" aria-label="그래프 종류"><button type="button" data-m="rr" aria-pressed="true">응답률</button><button type="button" data-m="raw" aria-pressed="false">센서값</button></div></div>
+      <div class="cbox"><canvas id="cvH" aria-label="기록 그래프"></canvas><div class="tip" hidden></div></div>
+      <div class="legend" id="lgH"></div>
+    </div>
+    <div class="card"><h2>상태 변화</h2><div class="tlwrap"><div class="tl" id="tlH"></div><div class="tlmark" id="tlHIns" hidden></div></div>
+      <div class="tlticks"><span id="tlHStart">–</span><span id="tlHEnd">–</span></div></div>
+    <div class="card"><h2>판정 기록</h2><ul class="log" id="hLog"></ul></div>
+    <a id="hCsv" class="btn" href="#" download>CSV 받기</a>
+  </div>
+</section>
+
+<!-- ===== 설정 ===== -->
+<section class="view" id="v-settings" hidden>
+  <div class="card">
+    <div class="row" style="margin-bottom:10px"><h2 style="margin:0">음식 종류 <span class="small">여러 개 고를 수 있어요</span></h2><span class="demo" id="demoChip" hidden>데모 기준</span></div>
+    <div class="seg wide foodseg" role="group" aria-label="음식 종류, 여러 개 선택 가능"><button type="button" data-f="0" aria-pressed="true">육류</button><button type="button" data-f="1" aria-pressed="false">생선</button><button type="button" data-f="2" aria-pressed="false">과일·채소</button></div>
+    <div class="fnote" id="foodNote"></div>
+  </div>
+  <div class="card">
+    <h2>판정 기준</h2>
+    <div class="field"><span class="lbl">기준을 바꿀 음식</span><select id="thFood"><option value="0">육류 · MQ136</option><option value="1">생선 · MQ137</option><option value="2">과일·채소 · MQ135</option></select></div>
+    <div class="grid2" style="margin-top:8px">
+      <label class="field"><span class="lbl">주의 (응답률 % 이상)</span><input id="warnIn" type="number" inputmode="decimal"></label>
+      <label class="field"><span class="lbl">부패 (응답률 % 이상)</span><input id="badIn" type="number" inputmode="decimal"></label>
+    </div>
+    <button type="button" class="btn primary" id="bSave" style="width:100%;margin-top:10px">기준 저장</button>
+    <div class="fnote" id="thMsg"></div>
+  </div>
+  <div class="card">
+    <h2>알림</h2>
+    <div class="toggle"><div>소리<div class="small">주의·부패로 바뀌면 삐 소리</div></div><button type="button" class="sw" role="switch" id="swSound" aria-checked="true" aria-label="소리 알림"></button></div>
+    <div class="toggle"><div>진동<div class="small">지원하는 휴대폰에서만</div></div><button type="button" class="sw" role="switch" id="swVib" aria-checked="true" aria-label="진동 알림"></button></div>
+    <button type="button" class="btn" id="bTest" style="width:100%;margin-top:8px">알림 테스트</button>
+    <div class="fnote">알림은 이 화면을 켜 둔 동안에만 와요. 측정 중에는 휴대폰 화면 꺼짐 시간을 늘려 두세요.</div>
+  </div>
+  <div class="card">
+    <h2>기기 정보</h2>
+    <dl class="info">
+      <dt>Wi-Fi 이름</dt><dd id="iSsid">–</dd>
+      <dt>앱 주소</dt><dd id="iHost">–</dd>
+      <dt>지금 측정</dt><dd id="iRun">–</dd>
+      <dt>측정 경과</dt><dd id="iTime">–</dd>
+      <dt>남은 저장공간</dt><dd id="iFree">–</dd>
+    </dl>
+    <div class="fnote">새 측정 기록은 ESP32 전원을 껐다 켜면 새 번호로 시작돼요.</div>
+  </div>
+</section>
+</div>
+
+<nav class="tabs" aria-label="화면">
+  <div class="in">
+    <a href="#home" data-v="home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>홈<span class="dot" id="dotHome"></span></a>
+    <a href="#analysis" data-v="analysis"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M5 16l4-5 4 3 6-8"/></svg>분석</a>
+    <a href="#history" data-v="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>기록</a>
+    <a href="#settings" data-v="settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>설정</a>
+  </div>
+</nav>
+
+<div class="shade" id="shade" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="wTitle" hidden>
+  <div class="in">
+    <div class="grab"></div>
+    <div class="steps" id="wSteps"><i></i><i></i><i></i><i></i></div>
+    <div class="small" id="wStepTxt">1 / 4</div>
+    <h3 id="wTitle">무엇을 측정하나요?</h3>
+    <div id="wBody"></div>
+    <div class="grid2" id="wBtns"></div>
+  </div>
+</div>
+
+<script>
+// ===== 미리보기용 가짜 ESP32 (fetch 대체). 실제 앱(esp32_local.ino)에는 들어가지 않음 =====
+(function(){
+var DATA=[[3,2511,962,3857,28.4,67.4],[23,2047,720,3029,28.4,67.5],[43,1811,615,2581,28.4,67.5],[63,1667,563,2320,28.4,67.4],[83,1590,528,2161,28.5,67.9],[103,1521,511,2059,28.5,67.9],[123,1477,503,1968,28.5,67.9],[143,1424,484,1898,28.5,67.9],[164,1388,459,1826,28.6,67.9],[184,1354,450,1778,28.6,67.8],[204,1319,453,1738,28.6,67.5],[224,1297,437,1681,28.7,67.4],[244,1267,401,1655,28.7,67.4],[264,1261,416,1642,28.7,67.5],[284,1230,393,1615,28.7,67.4],[304,1202,400,1575,28.7,67.3],[324,1193,400,1535,28.7,67.6],[344,1181,398,1519,28.7,67.6],[364,1152,406,1523,28.7,67.7],[384,1133,371,1488,28.6,67.8],[404,1145,394,1478,28.6,67.9],[424,1102,365,1479,28.6,67.6],[444,1102,371,1459,28.6,68.0],[464,1091,368,1439,28.5,67.9],[484,1083,353,1422,28.5,68.1],[505,1082,364,1407,28.5,67.9],[525,1060,359,1418,28.5,68.3],[545,1059,359,1399,28.5,68.2],[565,1051,352,1390,28.5,68.3],[585,1056,361,1377,28.5,68.1],[605,1033,349,1363,28.5,68.4],[625,1020,336,1366,28.5,68.0],[645,999,343,1354,28.4,68.2],[665,997,322,1349,28.4,68.6],[685,987,332,1334,28.4,68.7],[705,983,331,1349,28.4,68.4],[725,989,336,1338,28.3,68.4],[745,974,314,1333,28.3,68.5],[765,976,320,1323,28.3,68.6],[785,963,311,1330,28.3,68.7],[805,960,304,1312,28.3,68.7],[825,959,307,1305,28.3,68.8],[846,948,305,1301,28.3,68.8],[866,944,315,1309,28.2,68.8],[886,952,304,1306,28.2,68.8],[906,935,304,1296,28.2,68.8],[926,930,307,1291,28.2,68.9],[946,912,301,1289,28.2,68.9],[966,912,299,1293,28.2,69.0],[986,923,299,1283,28.1,69.1],[1006,914,290,1281,28.1,69.4],[1026,913,297,1290,28.1,69.2],[1046,898,297,1267,28.1,69.3],[1066,925,301,1286,28.1,69.5],[1086,911,279,1277,28.1,69.5],[1106,901,304,1271,28.1,69.4],[1126,902,299,1278,28.1,69.7],[1146,903,296,1249,28.1,69.5],[1166,902,291,1259,28.1,69.6],[1187,881,279,1262,28.0,69.7],[1207,889,272,1264,28.0,69.5],[1227,868,272,1269,28.0,69.5],[1247,864,278,1263,28.0,69.6],[1267,878,288,1258,28.0,69.8],[1287,867,272,1264,27.9,69.9],[1307,846,270,1247,27.9,69.8],[1327,871,253,1260,27.9,69.8],[1347,867,269,1263,27.9,70.1],[1367,853,257,1253,27.9,70.0],[1387,865,272,1258,27.9,70.1],[1407,853,260,1250,27.8,70.1],[1427,848,265,1243,27.8,70.2],[1447,851,272,1254,27.8,70.2],[1467,854,263,1248,27.8,70.2],[1487,850,228,1247,27.8,70.3],[1508,848,269,1262,27.8,70.2],[1528,850,256,1249,27.8,70.2],[1548,842,266,1254,27.8,70.2],[1568,833,253,1243,27.8,70.3],[1588,848,261,1239,27.7,70.3],[1608,833,261,1233,27.7,70.4],[1628,832,266,1255,27.7,70.5],[1648,830,268,1245,27.7,70.5],[1668,832,249,1236,27.7,70.5],[1688,843,262,1249,27.7,70.5],[1708,831,262,1250,27.7,70.5],[1728,818,238,1249,27.7,70.6],[1748,821,252,1267,27.7,70.6],[1768,821,244,1243,27.7,70.6],[1788,816,241,1255,27.7,70.5],[1808,832,254,1244,27.7,70.5],[1828,823,256,1261,27.7,70.5],[1849,827,242,1264,27.6,70.5],[1869,817,249,1247,27.6,70.6],[1889,816,254,1250,27.6,70.7],[1909,820,241,1253,27.6,70.7],[1929,801,239,1242,27.6,70.8],[1949,802,240,1265,27.5,70.8],[1969,815,246,1257,27.5,70.8],[1989,817,241,1247,27.5,70.9],[2009,811,245,1245,27.5,70.9],[2029,812,236,1251,27.5,70.9],[2049,805,240,1245,27.5,70.9],[2069,816,262,1258,27.5,70.9],[2089,803,238,1249,27.5,70.9],[2109,799,235,1232,27.5,70.8],[2129,813,227,1241,27.5,70.9],[2149,796,240,1238,27.5,70.9],[2170,810,237,1251,27.4,70.9],[2190,785,241,1234,27.4,71.0],[2210,800,241,1237,27.4,71.0],[2230,806,235,1261,27.4,71.1],[2250,797,237,1232,27.4,71.1],[2270,793,233,1234,27.4,71.1],[2290,795,218,1243,27.4,71.2],[2310,784,240,1248,27.4,71.2],[2330,792,237,1235,27.4,71.2],[2350,794,215,1239,27.4,71.2],[2370,785,230,1250,27.4,71.2],[2390,790,223,1244,27.4,71.1],[2410,779,229,1237,27.4,71.1],[2430,801,230,1234,27.4,71.1],[2450,785,237,1251,27.3,71.1],[2470,778,241,1245,27.3,71.2],[2490,787,219,1250,27.3,71.2],[2511,781,239,1251,27.3,71.2],[2531,797,223,1246,27.3,71.3],[2551,772,229,1250,27.3,71.3],[2571,787,235,1231,27.3,71.3],[2591,785,238,1250,27.3,71.3],[2611,781,223,1235,27.3,71.3],[2631,779,210,1237,27.2,71.4],[2651,788,221,1248,27.3,71.4],[2671,769,213,1257,27.3,71.4],[2691,784,222,1242,27.3,71.3],[2711,779,223,1231,27.2,71.3],[2731,783,226,1242,27.2,71.2],[2751,764,237,1255,27.2,71.2],[2771,777,208,1245,27.2,71.3],[2791,777,212,1236,27.2,71.3],[2811,768,212,1227,27.2,71.4],[2831,774,239,1233,27.2,71.4],[2852,782,224,1255,27.1,71.4],[2872,768,227,1262,27.1,71.5],[2892,768,218,1234,27.1,71.5],[2912,779,223,1234,27.1,71.5],[2932,768,238,1242,27.1,71.5],[2952,775,217,1238,27.1,71.5],[2972,771,210,1239,27.1,71.5],[2992,783,226,1249,27.1,71.6],[3012,775,215,1258,27.1,71.5],[3032,782,211,1235,27.1,71.4],[3052,782,226,1250,27.1,71.5],[3072,774,218,1236,27.1,71.4],[3092,767,234,1248,27.1,71.4],[3112,767,215,1238,27.0,71.4],[3132,765,223,1239,27.0,71.5],[3152,775,213,1242,27.0,71.5],[3172,778,222,1242,27.0,71.6],[3193,752,221,1241,27.0,71.7],[3213,747,225,1240,26.9,71.7],[3233,752,233,1232,26.9,71.8],[3253,777,238,1249,26.9,71.8],[3273,774,224,1243,26.9,71.8],[3293,774,223,1249,26.9,71.9],[3313,770,219,1232,26.9,71.8],[3333,752,215,1237,26.9,71.8],[3353,758,221,1251,26.9,71.8],[3373,775,213,1253,26.9,71.7],[3393,758,209,1259,26.9,71.7],[3413,766,218,1239,26.9,71.8],[3433,762,213,1233,26.8,71.7],[3453,762,236,1249,26.8,71.8],[3473,756,218,1231,26.8,71.8],[3493,777,230,1247,26.8,71.9],[3514,775,221,1247,26.8,72.0],[3534,755,208,1245,26.8,71.9],[3554,753,202,1234,26.8,72.0],[3574,763,237,1243,26.8,72.0],[3594,782,209,1242,26.7,72.1],[3614,768,234,1248,26.7,72.1],[3634,765,215,1238,26.7,72.1],[3654,766,227,1248,26.7,72.1],[3674,754,219,1243,26.7,72.0],[3694,763,220,1256,26.8,72.0],[3714,765,217,1243,26.7,72.0],[3734,752,193,1249,26.8,71.9],[3754,816,292,1392,26.7,70.2],[3774,864,363,1511,26.7,68.9],[3794,887,375,1580,26.7,68.7],[3814,875,394,1583,26.7,69.0],[3834,911,384,1619,26.7,69.5],[3855,929,400,1637,26.6,69.9],[3875,957,443,1696,26.6,70.4],[3895,979,423,1680,26.6,71.0],[3915,974,461,1685,26.6,71.4],[3935,979,459,1696,26.6,71.8],[3955,983,454,1690,26.6,72.2],[3975,974,464,1695,26.6,72.6],[3995,983,448,1686,26.6,72.9],[4015,976,464,1690,26.6,73.3],[4035,982,474,1682,26.6,73.6],[4055,979,461,1710,26.6,73.8],[4075,976,464,1692,26.7,74.1],[4095,978,484,1691,26.7,74.4],[4115,970,464,1703,26.6,74.6],[4135,974,494,1697,26.7,74.9],[4155,966,484,1709,26.7,75.2],[4176,976,466,1699,26.6,75.5],[4196,971,466,1702,26.6,75.7],[4216,970,464,1697,26.6,75.9],[4236,963,466,1702,26.6,76.3],[4256,979,464,1694,26.6,76.5],[4276,970,487,1695,26.5,76.8],[4296,972,476,1703,26.5,77.1],[4316,981,480,1693,26.5,77.3],[4336,964,470,1703,26.4,77.6],[4356,963,469,1698,26.4,77.8],[4376,965,490,1706,26.4,78.1],[4396,964,493,1691,26.4,78.3],[4416,976,471,1685,26.4,78.5],[4436,972,461,1679,26.4,78.6],[4456,966,485,1681,26.4,78.8],[4476,970,476,1691,26.3,79.0],[4496,969,469,1687,26.4,79.1],[4517,957,483,1690,26.4,79.3],[4537,976,474,1683,26.4,79.3],[4557,971,481,1684,26.4,79.4],[4577,966,483,1683,26.4,79.5],[4597,963,478,1683,26.4,79.7],[4617,973,479,1683,26.4,79.8],[4637,950,479,1687,26.4,79.9],[4657,963,464,1690,26.4,80.0],[4677,963,473,1680,26.4,80.2],[4697,967,477,1690,26.4,80.3],[4717,956,479,1680,26.4,80.3],[4737,973,466,1687,26.4,80.4],[4757,957,486,1691,26.4,80.5],[4777,976,470,1686,26.4,80.6],[4797,955,471,1667,26.5,80.6],[4817,954,470,1680,26.5,80.7],[4837,971,480,1683,26.5,80.7],[4858,960,462,1678,26.5,80.7],[4878,947,479,1678,26.5,80.7],[4898,953,490,1684,26.5,80.7],[4918,965,463,1677,26.5,80.8],[4938,971,473,1678,26.5,80.8],[4958,949,477,1673,26.5,80.9],[4978,961,468,1680,26.5,81.0],[4998,956,478,1667,26.5,81.1],[5018,947,473,1672,26.6,81.2],[5038,965,471,1680,26.5,81.2],[5058,959,474,1675,26.5,81.3],[5078,948,464,1666,26.6,81.4],[5098,946,464,1680,26.6,81.4],[5118,956,479,1665,26.6,81.5],[5138,962,487,1667,26.6,81.5],[5158,957,470,1680,26.6,81.5],[5178,954,478,1662,26.6,81.6],[5199,963,474,1682,26.6,81.5],[5219,945,474,1677,26.7,81.6],[5239,967,461,1679,26.6,81.5],[5259,960,464,1667,26.6,81.6],[5279,946,465,1675,26.6,81.7],[5299,967,461,1679,26.6,81.8],[5319,960,464,1666,26.6,81.9],[5339,955,465,1666,26.6,81.9],[5359,966,466,1667,26.6,82.0],[5379,951,476,1670,26.6,82.1],[5399,944,469,1665,26.7,82.2],[5419,964,471,1675,26.7,82.2],[5439,976,482,1670,26.7,82.2],[5459,973,468,1661,26.7,82.2],[5479,951,479,1661,26.7,82.3],[5499,971,473,1675,26.7,82.3],[5520,959,463,1673,26.7,82.3],[5540,966,469,1664,26.7,82.3],[5560,957,463,1653,26.7,82.3],[5580,961,479,1679,26.7,82.4],[5600,971,453,1676,26.7,82.4],[5620,963,475,1664,26.7,82.4],[5640,970,468,1679,26.7,82.5],[5660,960,464,1662,26.7,82.5],[5680,958,465,1679,26.8,82.5],[5700,962,465,1678,26.7,82.5],[5720,967,450,1663,26.8,82.6],[5740,960,469,1680,26.8,82.6],[5760,961,466,1665,26.8,82.6],[5780,966,465,1663,26.8,82.6],[5800,944,479,1677,26.8,82.6],[5820,945,467,1684,26.8,82.6],[5840,962,461,1658,26.8,82.6],[5861,948,475,1680,26.8,82.7],[5881,945,471,1680,26.8,82.7],[5901,950,470,1678,26.8,82.8],[5921,948,465,1674,26.8,82.8],[5941,961,458,1673,26.8,82.9],[5961,961,475,1680,26.8,82.8],[5981,958,458,1673,26.8,82.9],[6001,961,479,1670,26.8,82.9],[6021,958,465,1660,26.8,82.9],[6041,959,464,1664,26.8,82.9],[6061,958,453,1659,26.8,83.0],[6081,950,453,1663,26.9,83.0],[6101,958,466,1661,26.9,83.0],[6121,958,479,1689,26.9,83.0],[6141,969,464,1681,26.9,83.0],[6161,943,459,1658,26.9,83.0],[6182,945,484,1671,26.9,83.0],[6202,947,473,1665,26.9,83.1],[6222,949,477,1655,26.9,83.1],[6242,946,465,1665,26.9,83.2],[6262,955,469,1671,26.9,83.2],[6282,954,467,1675,26.9,83.2],[6302,971,464,1665,26.9,83.3],[6322,970,452,1669,26.9,83.3],[6342,947,477,1677,26.9,83.3],[6362,946,474,1681,26.9,83.3],[6382,966,455,1663,26.9,83.3],[6402,961,469,1668,26.9,83.3],[6422,950,464,1668,26.9,83.3],[6442,947,451,1646,26.9,83.3],[6462,947,459,1678,26.9,83.4],[6482,950,461,1664,26.9,83.4],[6502,950,479,1673,26.9,83.5],[6523,963,479,1673,27.0,83.6],[6543,972,463,1680,26.9,83.6],[6563,960,458,1671,26.9,83.5],[6583,954,461,1681,27.0,83.6],[6603,961,473,1675,26.9,83.6],[6623,946,472,1671,27.0,83.6],[6643,955,461,1673,27.0,83.6],[6663,966,464,1665,27.0,83.5],[6683,954,459,1665,27.0,83.6],[6703,971,464,1680,27.0,83.5],[6723,958,456,1661,27.0,83.6],[6743,951,467,1669,26.9,83.6],[6763,960,462,1675,26.9,83.6],[6783,946,468,1675,26.9,83.6],[6803,949,449,1664,26.8,83.7],[6823,957,468,1681,26.8,83.8],[6843,950,464,1668,26.8,83.8],[6864,953,465,1680,26.7,83.8],[6884,946,464,1655,26.7,83.9],[6904,951,466,1670,26.6,84.0],[6924,954,480,1662,26.6,84.0],[6944,955,454,1655,26.5,84.2],[6964,961,459,1648,26.5,84.3],[6984,949,475,1658,26.4,84.6],[7004,955,461,1663,26.4,84.8],[7024,959,466,1653,26.4,85.0],[7044,942,473,1663,26.4,85.2],[7064,959,462,1646,26.3,85.3],[7084,941,464,1661,26.3,85.5],[7104,944,464,1662,26.3,85.6],[7124,954,473,1669,26.3,85.7],[7144,943,459,1670,26.3,85.8],[7164,959,448,1649,26.3,85.7],[7184,959,470,1643,26.3,85.7],[7205,954,458,1648,26.3,85.7],[7225,959,464,1658,26.3,85.8],[7245,949,467,1648,26.2,85.7],[7265,959,459,1658,26.2,85.7],[7285,945,464,1648,26.2,85.7],[7305,944,455,1637,26.1,85.6],[7325,944,464,1659,26.1,85.6],[7345,940,464,1648,26.1,85.6],[7365,942,452,1648,26.0,85.7],[7385,942,449,1642,26.0,85.9],[7405,947,448,1648,25.9,86.1],[7425,944,453,1651,25.9,86.2],[7445,950,451,1649,25.9,86.4],[7465,946,461,1654,25.9,86.5],[7485,960,465,1646,25.9,86.7],[7505,951,465,1654,25.9,86.9],[7526,945,451,1650,25.9,87.0],[7546,941,450,1648,25.9,87.1],[7566,944,459,1658,25.9,87.1],[7586,962,470,1648,25.9,87.1],[7606,939,464,1649,25.9,87.1],[7626,956,447,1651,25.9,87.1],[7646,947,454,1644,25.9,87.1],[7666,940,470,1649,25.9,87.1],[7686,933,470,1655,25.9,87.2],[7706,946,455,1651,25.9,87.2],[7726,944,443,1666,25.8,87.3],[7746,935,464,1647,25.9,87.3],[7766,945,468,1650,25.9,87.4],[7786,941,477,1647,25.8,87.4],[7806,944,464,1650,25.9,87.5],[7826,955,455,1648,25.9,87.5],[7846,948,448,1649,25.9,87.5],[7867,933,454,1651,25.9,87.5],[7887,949,453,1647,25.9,87.5],[7907,954,455,1670,25.9,87.5],[7927,934,467,1645,25.9,87.4],[7947,944,457,1641,25.9,87.4],[7967,955,454,1650,25.9,87.3],[7987,950,456,1654,25.9,87.3],[8007,955,459,1643,25.9,87.3],[8027,944,464,1645,25.9,87.4],[8047,944,438,1646,25.8,87.4],[8067,947,467,1648,25.8,87.5],[8087,960,464,1646,25.8,87.5],[8107,945,471,1648,25.9,87.6],[8127,945,454,1643,25.8,87.6],[8147,967,452,1637,25.9,87.6],[8167,942,448,1660,25.9,87.7],[8188,957,464,1648,25.9,87.7],[8208,948,464,1645,25.9,87.7],[8228,945,462,1648,25.9,87.6],[8248,944,469,1643,25.9,87.6],[8268,955,454,1648,25.9,87.5],[8288,944,462,1645,25.8,87.4],[8308,955,452,1650,25.8,87.5],[8328,944,463,1647,25.8,87.5],[8348,945,460,1648,25.8,87.5],[8368,961,465,1639,25.8,87.6],[8388,955,454,1641,25.8,87.7],[8408,942,455,1639,25.8,87.7],[8428,949,448,1645,25.8,87.7],[8448,939,470,1648,25.8,87.8],[8468,944,455,1646,25.8,87.8],[8488,942,461,1648,25.8,87.8],[8508,951,465,1659,25.8,87.8],[8529,936,465,1639,25.8,87.8],[8549,946,460,1647,25.8,87.8],[8569,943,473,1648,25.8,87.7],[8589,946,452,1650,25.9,87.7],[8609,945,450,1646,25.8,87.7],[8629,935,464,1661,25.8,87.7],[8649,949,453,1649,25.8,87.7],[8669,954,450,1648,25.8,87.8],[8689,942,448,1648,25.8,87.8],[8709,961,462,1635,25.8,87.8],[8729,937,464,1654,25.8,87.8],[8749,959,448,1631,25.8,87.9],[8769,945,443,1657,25.8,87.9],[8789,965,462,1648,25.9,88.0],[8809,939,460,1651,25.8,88.0],[8829,947,471,1655,25.9,87.9],[8849,939,451,1627,25.9,87.9],[8870,941,459,1652,25.9,87.8],[8890,940,473,1637,25.9,87.9],[8910,933,461,1648,25.9,87.9],[8930,944,457,1651,25.9,87.9],[8950,945,464,1646,25.9,87.9],[8970,951,462,1646,25.9,87.9],[8990,938,459,1648,25.9,87.7],[9010,950,463,1637,25.9,87.6],[9030,949,448,1654,25.9,87.6],[9050,947,462,1646,25.9,87.6],[9070,946,464,1642,25.9,87.5],[9090,943,469,1648,26.0,87.5],[9110,962,448,1651,26.0,87.4],[9130,949,448,1661,26.0,87.3],[9150,960,461,1655,26.0,87.2],[9170,965,451,1658,26.1,87.2],[9190,960,464,1655,26.1,87.2],[9211,944,452,1650,26.1,87.1],[9231,960,464,1673,26.2,87.1],[9251,951,468,1663,26.2,87.1],[9271,950,468,1656,26.2,87.0],[9291,960,455,1665,26.2,86.6],[9311,949,471,1668,26.3,86.4],[9331,964,464,1674,26.3,86.5],[9351,974,469,1661,26.3,86.4],[9371,960,482,1679,26.4,86.3],[9391,955,462,1664,26.4,86.3],[9411,955,475,1668,26.4,86.3],[9431,958,468,1683,26.5,86.2],[9451,965,482,1670,26.5,86.2],[9471,970,467,1675,26.5,86.2],[9491,965,467,1680,26.6,86.2],[9511,970,464,1667,26.6,86.1],[9532,961,464,1687,26.6,85.7],[9552,963,477,1690,26.6,85.1],[9572,972,479,1685,26.7,84.8],[9592,974,469,1686,26.7,84.7],[9612,960,469,1685,26.7,84.4],[9632,965,471,1696,26.8,84.4],[9652,971,478,1701,26.8,84.4],[9672,963,483,1683,26.8,84.0],[9692,970,479,1713,26.8,83.9],[9712,962,487,1706,26.9,83.9],[9732,977,472,1690,26.9,84.1],[9752,971,489,1702,26.9,84.0],[9772,971,471,1691,26.9,84.0],[9792,970,462,1699,26.9,84.1],[9812,967,479,1710,26.9,83.9],[9832,970,477,1705,27.0,83.9],[9852,965,473,1709,27.0,83.9],[9873,971,480,1705,27.0,83.8],[9893,978,475,1710,27.0,83.8],[9913,977,493,1712,27.0,83.9],[9933,992,486,1711,27.0,83.9],[9953,988,466,1715,27.0,83.9],[9973,976,469,1714,27.0,83.8],[9993,976,481,1714,27.0,83.7],[10013,988,479,1712,27.0,83.8],[10033,979,473,1714,27.1,83.7],[10053,970,466,1700,27.1,83.7],[10073,979,485,1711,27.1,83.7],[10093,981,483,1712,27.1,83.8],[10113,976,477,1712,27.1,83.8],[10133,983,484,1719,27.1,83.8],[10153,986,465,1707,27.1,83.6],[10173,983,471,1711,27.1,83.6],[10194,991,483,1717,27.2,83.5],[10214,988,493,1725,27.2,83.4],[10234,980,481,1722,27.1,83.3],[10254,997,481,1705,27.1,83.3],[10274,987,500,1708,27.2,83.3],[10294,981,496,1703,27.2,83.2],[10314,972,482,1722,27.2,83.1],[10334,993,487,1718,27.2,83.0],[10354,976,486,1709,27.2,83.1],[10374,987,497,1722,27.2,83.2],[10394,992,482,1715,27.2,83.4],[10414,993,489,1714,27.2,83.6],[10434,1003,477,1723,27.2,83.7],[10454,977,490,1727,27.2,83.7],[10474,1008,479,1722,27.3,83.6],[10494,979,493,1717,27.2,83.4],[10514,986,497,1717,27.3,82.9],[10535,982,502,1734,27.3,82.7],[10555,990,485,1712,27.3,82.7],[10575,993,494,1736,27.3,82.8],[10595,998,478,1723,27.3,83.0],[10615,1002,488,1731,27.3,82.8],[10635,976,482,1715,27.3,82.8],[10655,986,481,1726,27.3,82.6],[10675,979,490,1713,27.3,82.7],[10695,987,511,1724,27.3,82.8],[10715,1006,495,1726,27.3,82.7],[10735,995,491,1726,27.3,82.7],[10755,990,486,1731,27.3,82.7],[10775,994,494,1739,27.3,82.8],[10795,985,484,1744,27.3,82.8],[10815,990,493,1730,27.3,82.8],[10835,993,483,1729,27.3,82.8],[10855,1003,503,1741,27.3,82.9],[10876,992,498,1732,27.3,82.9],[10896,1003,493,1734,27.3,82.8],[10916,994,497,1734,27.3,82.7],[10936,1002,498,1741,27.3,82.7],[10956,999,496,1735,27.3,82.7],[10976,1007,489,1738,27.3,82.6],[10996,993,486,1728,27.3,82.5],[11016,986,511,1733,27.3,82.5],[11036,997,500,1721,27.3,82.5],[11056,1007,496,1734,27.3,82.5],[11076,1006,480,1739,27.3,82.6],[11096,993,505,1743,27.4,82.5],[11116,1008,496,1745,27.3,82.5],[11136,1006,485,1744,27.4,82.6],[11156,1011,501,1739,27.3,82.5],[11176,1008,494,1732,27.3,82.5],[11196,1008,482,1743,27.3,82.5],[11217,1005,499,1733,27.4,82.5],[11237,998,483,1741,27.4,82.5],[11257,1007,487,1755,27.4,82.4],[11277,1009,498,1747,27.4,82.5],[11297,1008,508,1744,27.4,82.6],[11317,1009,496,1746,27.3,82.7],[11337,1008,507,1742,27.4,82.7],[11357,999,500,1745,27.4,82.7],[11377,1008,501,1758,27.4,82.7],[11397,1007,494,1744,27.3,82.8],[11417,1006,508,1753,27.4,82.6],[11437,1011,485,1747,27.4,82.6],[11457,1010,502,1758,27.4,82.6],[11477,1008,493,1761,27.4,82.6],[11497,1005,492,1742,27.4,82.5],[11517,996,496,1744,27.4,82.5],[11538,1004,511,1761,27.4,82.3],[11558,1023,490,1759,27.4,82.4],[11578,992,510,1753,27.4,82.3],[11598,999,501,1744,27.4,82.4],[11618,1022,496,1746,27.4,82.4],[11638,1006,496,1754,27.4,82.5],[11658,1008,490,1755,27.4,82.6],[11678,1003,506,1755,27.4,82.8],[11698,995,506,1746,27.4,82.6],[11718,1007,496,1759,27.4,82.6],[11738,1014,494,1758,27.3,82.5],[11758,1014,528,1758,27.4,82.7],[11778,1014,496,1761,27.4,82.8],[11798,1009,498,1757,27.4,82.9],[11818,1008,505,1749,27.4,82.8],[11838,1014,505,1758,27.4,82.8],[11858,1008,502,1757,27.4,82.4],[11879,1019,496,1758,27.4,82.1],[11899,1010,502,1762,27.4,82.4],[11919,1023,496,1767,27.4,82.6],[11939,1018,511,1758,27.4,82.6],[11959,1018,495,1744,27.4,82.7],[11979,1023,499,1759,27.4,82.8],[11999,1010,496,1767,27.4,82.8],[12019,1009,506,1760,27.4,82.8],[12039,1040,511,1764,27.4,82.7],[12059,1038,496,1773,27.4,82.7],[12079,1029,522,1776,27.4,83.0],[12099,1005,510,1761,27.4,83.1],[12119,1019,494,1767,27.4,83.1],[12139,1022,509,1771,27.4,82.9],[12159,1010,511,1759,27.4,83.0],[12179,1021,505,1762,27.4,82.7],[12200,1007,500,1776,27.4,82.7],[12220,1022,497,1763,27.4,82.8],[12240,1037,509,1755,27.4,82.7],[12260,1009,491,1774,27.4,82.6],[12280,1003,501,1761,27.4,82.8],[12300,1015,507,1781,27.4,82.7],[12320,1015,529,1770,27.4,82.7],[12340,1023,499,1757,27.4,82.7],[12360,1008,497,1769,27.4,82.7],[12380,1023,499,1769,27.4,82.7],[12400,1037,511,1760,27.4,82.7],[12420,1040,511,1753,27.4,82.8],[12440,1019,496,1757,27.4,83.0],[12460,1038,496,1767,27.4,83.2],[12480,1019,511,1762,27.5,83.5],[12500,1022,505,1751,27.4,83.6],[12520,1023,531,1761,27.4,83.4],[12541,1015,510,1776,27.5,83.2],[12561,1017,527,1772,27.5,83.1],[12581,1014,510,1759,27.5,83.3],[12601,1014,535,1777,27.5,83.4],[12621,1012,511,1779,27.5,83.5],[12641,1008,529,1773,27.5,83.8],[12661,1013,525,1776,27.5,83.8],[12681,1015,522,1778,27.5,83.8],[12701,1023,532,1778,27.5,83.8],[12721,1031,525,1781,27.5,83.9],[12741,1019,533,1777,27.5,83.9],[12761,1018,506,1789,27.5,83.9],[12781,1020,511,1787,27.5,84.0],[12801,1019,511,1780,27.5,83.9],[12821,1009,525,1767,27.5,83.9],[12841,1011,525,1779,27.6,84.0],[12861,1036,511,1780,27.6,83.7],[12882,1043,528,1792,27.6,83.5],[12902,1023,522,1780,27.6,83.6],[12922,1035,511,1793,27.6,83.6],[12942,1040,526,1783,27.6,83.7],[12962,1008,528,1786,27.6,83.8],[12982,1031,534,1790,27.6,83.9],[13002,1021,541,1781,27.6,83.8],[13022,1023,533,1783,27.6,83.9],[13042,1015,530,1795,27.6,83.9],[13062,1033,536,1780,27.6,83.9],[13082,1034,523,1771,27.7,83.8],[13102,1023,528,1781,27.7,83.9],[13122,1019,534,1783,27.7,83.9],[13142,1020,535,1796,27.6,84.0],[13162,1042,535,1783,27.7,83.9],[13182,1023,534,1777,27.7,84.0],[13202,1015,538,1793,27.7,84.1],[13223,1019,534,1777,27.7,84.0],[13243,1043,530,1794,27.7,83.9],[13263,1039,539,1782,27.7,83.9],[13283,1023,539,1793,27.7,83.9],[13303,1040,526,1798,27.7,83.6],[13323,1023,529,1798,27.7,83.3],[13343,1047,527,1798,27.7,83.2],[13363,1015,529,1798,27.7,83.4],[13383,1037,539,1791,27.7,83.6],[13403,1023,533,1799,27.8,83.6],[13423,1040,533,1790,27.8,83.5],[13443,1043,528,1795,27.8,83.5],[13463,1047,545,1792,27.7,83.4],[13483,1019,511,1808,27.8,83.4],[13503,1037,530,1786,27.8,83.7],[13523,1039,534,1804,27.8,83.7],[13544,1043,539,1801,27.8,83.7],[13564,1039,531,1797,27.8,83.6],[13584,1034,531,1792,27.8,83.6],[13604,1031,536,1803,27.8,83.7],[13624,1040,537,1799,27.8,83.3],[13644,1035,543,1807,27.8,83.3],[13664,1023,540,1790,27.8,83.4],[13684,1037,527,1795,27.8,83.4],[13704,1040,528,1792,27.8,83.6],[13724,1034,542,1803,27.8,83.7],[13744,1023,541,1799,27.8,83.8],[13764,1037,550,1807,27.8,83.7],[13784,1039,547,1797,27.8,83.7],[13804,1040,536,1799,27.8,83.5],[13824,1036,538,1808,27.8,83.4],[13844,1051,560,1803,27.8,83.2],[13864,1041,533,1821,27.8,83.1],[13885,1039,539,1797,27.8,83.1],[13905,1037,533,1808,27.8,83.2],[13925,1043,532,1807,27.8,83.3],[13945,1039,547,1793,27.8,83.3],[13965,1053,537,1808,27.8,83.4],[13985,1053,546,1812,27.8,83.4],[14005,1049,538,1805,27.8,83.5],[14025,1038,531,1808,27.8,83.5],[14045,1038,539,1803,27.9,83.5],[14065,1054,545,1807,27.9,83.8],[14085,1050,546,1820,27.8,83.8],[14105,1045,534,1809,27.8,83.7],[14125,1051,545,1817,27.9,83.5],[14145,1050,546,1807,27.9,83.4],[14165,1054,542,1813,27.9,83.4],[14185,1061,530,1812,27.9,83.5],[14206,1052,539,1811,27.9,83.7],[14226,1043,540,1825,27.9,83.8],[14246,1053,535,1815,27.9,83.8],[14266,1040,567,1809,27.8,83.8],[14286,1055,551,1826,27.8,83.9],[14306,1044,544,1819,27.9,83.9],[14326,1041,545,1815,27.9,83.9],[14346,1047,531,1818,27.8,84.0],[14366,1037,542,1811,27.9,84.1],[14386,1050,535,1819,27.9,84.0],[14406,1055,533,1815,27.9,84.1],[14426,1053,542,1818,27.9,84.1],[14446,1042,544,1833,27.9,84.0],[14466,1054,554,1815,27.9,84.1],[14486,1065,552,1815,27.9,84.0],[14506,1046,557,1839,27.9,84.2],[14526,1057,550,1829,27.9,84.1],[14547,1043,546,1835,27.9,83.7],[14567,1043,547,1825,27.9,83.1],[14587,1054,555,1815,27.9,82.4],[14607,1055,529,1819,27.8,82.3],[14627,1056,560,1829,27.8,82.3],[14647,1046,559,1817,27.9,82.2],[14667,1049,563,1840,27.9,82.2],[14687,1062,538,1839,27.9,82.2],[14707,1057,547,1815,27.8,82.2],[14727,1061,551,1823,27.8,82.2],[14747,1058,547,1830,27.8,82.4],[14767,1062,560,1837,27.8,82.4],[14787,1046,560,1840,27.8,82.4],[14807,1057,566,1840,27.8,82.4],[14827,1053,560,1837,27.8,82.5],[14847,1072,558,1840,27.8,82.3],[14867,1043,549,1834,27.8,82.4],[14888,1072,541,1835,27.8,82.4],[14908,1061,551,1833,27.7,82.4],[14928,1057,563,1843,27.8,82.4],[14948,1063,559,1839,27.7,82.4],[14968,1057,565,1838,27.7,82.3],[14988,1062,565,1837,27.7,82.4],[15008,1072,560,1841,27.7,82.4],[15028,1083,546,1845,27.7,82.7],[15048,1067,547,1831,27.7,82.6],[15068,1061,549,1849,27.7,82.6],[15088,1055,545,1850,27.7,82.5],[15108,1072,548,1839,27.7,82.4],[15128,1066,562,1845,27.7,82.4],[15148,1061,554,1837,27.6,82.6],[15168,1061,560,1834,27.6,82.5],[15188,1051,560,1841,27.6,82.5],[15208,1058,558,1846,27.6,82.6],[15229,1073,551,1835,27.6,82.6],[15249,1053,562,1856,27.6,82.6],[15269,1070,566,1850,27.6,82.5],[15289,1072,556,1840,27.6,82.5],[15309,1057,570,1845,27.6,82.6],[15329,1063,566,1854,27.6,82.7],[15349,1071,561,1857,27.6,82.7],[15369,1073,558,1860,27.5,82.6],[15389,1069,546,1835,27.5,82.7],[15409,1066,553,1851,27.5,82.5],[15429,1072,555,1853,27.5,82.7],[15449,1079,574,1853,27.5,82.7],[15469,1071,557,1861,27.5,82.7],[15489,1058,557,1853,27.5,82.8],[15509,1072,560,1856,27.5,82.7],[15529,1074,569,1872,27.5,82.8],[15550,1072,576,1855,27.5,82.6],[15570,1072,557,1847,27.5,82.8],[15590,1071,555,1863,27.5,82.7],[15610,1064,570,1845,27.4,82.7],[15630,1072,580,1849,27.5,82.8],[15650,1072,560,1859,27.5,82.8],[15670,1073,567,1852,27.4,82.7],[15690,1072,576,1851,27.4,82.9],[15710,1072,557,1858,27.4,82.9],[15730,1072,567,1858,27.4,82.8],[15750,1066,576,1859,27.4,82.8],[15770,1061,576,1854,27.4,82.8],[15790,1072,568,1866,27.4,83.0],[15810,1074,559,1856,27.4,82.8],[15830,1079,566,1858,27.4,82.9],[15850,1067,557,1858,27.4,83.0],[15870,1071,566,1869,27.4,82.9],[15891,1073,580,1863,27.4,83.1],[15911,1085,562,1860,27.4,82.9],[15931,1075,571,1871,27.4,83.0],[15951,1077,555,1867,27.3,83.2],[15971,1077,562,1874,27.3,83.2],[15991,1087,561,1872,27.4,83.3],[16011,1082,560,1872,27.4,83.2],[16031,1070,571,1878,27.4,83.1],[16051,1086,579,1874,27.3,83.2],[16071,1078,563,1869,27.4,83.6],[16091,1082,557,1871,27.3,83.9],[16111,1086,572,1873,27.4,83.6],[16131,1090,565,1862,27.4,83.2],[16151,1093,563,1867,27.3,83.2],[16171,1082,556,1879,27.4,83.3],[16191,1087,582,1873,27.4,83.6],[16212,1081,576,1877,27.4,84.0],[16232,1087,575,1882,27.4,84.1],[16252,1086,576,1873,27.4,84.1],[16272,1085,560,1873,27.4,84.0],[16292,1086,567,1877,27.4,83.8],[16312,1101,564,1881,27.5,83.7],[16332,1085,561,1862,27.5,83.3],[16352,1092,583,1888,27.4,82.9],[16372,1088,579,1883,27.5,83.0],[16392,1086,576,1897,27.5,83.2],[16412,1095,579,1890,27.5,83.1],[16432,1098,587,1893,27.5,83.0],[16452,1082,575,1890,27.5,82.9],[16472,1091,576,1879,27.5,82.9],[16492,1095,571,1898,27.5,82.7],[16512,1093,579,1889,27.6,82.6],[16532,1088,577,1895,27.5,82.8],[16553,1095,578,1891,27.6,82.8],[16573,1092,576,1874,27.6,82.8],[16593,1104,567,1888,27.6,82.8],[16613,1095,579,1897,27.6,82.9],[16633,1086,570,1907,27.6,82.9],[16653,1094,577,1891,27.6,82.9],[16673,1089,592,1893,27.6,83.1],[16693,1097,577,1904,27.6,83.0],[16713,1083,577,1899,27.6,83.1],[16733,1094,596,1904,27.6,83.2],[16753,1093,575,1902,27.6,83.2],[16773,1085,566,1907,27.6,83.1],[16793,1099,577,1905,27.6,83.1],[16813,1104,576,1911,27.6,83.0],[16833,1109,575,1903,27.6,83.0],[16853,1103,585,1898,27.6,83.0],[16873,1087,583,1906,27.6,83.1],[16894,1090,595,1904,27.6,83.1],[16914,1085,587,1906,27.6,83.2],[16934,1102,592,1919,27.6,83.2],[16954,1107,589,1923,27.6,83.3],[16974,1099,598,1916,27.6,83.4],[16994,1109,578,1917,27.6,83.2],[17014,1072,586,1927,27.6,83.1],[17034,1093,596,1906,27.6,82.8],[17054,1094,593,1924,27.6,82.9],[17074,1099,598,1916,27.6,82.9],[17094,1117,589,1920,27.6,82.8],[17114,1104,585,1914,27.6,82.8],[17134,1099,583,1914,27.6,82.7],[17154,1123,592,1907,27.6,82.7],[17174,1115,583,1935,27.6,82.8],[17194,1103,591,1923,27.6,82.9],[17214,1104,589,1933,27.6,83.0],[17235,1105,573,1923,27.6,83.0],[17255,1109,590,1921,27.6,83.2],[17275,1127,582,1936,27.6,83.3],[17295,1106,583,1936,27.6,83.3],[17315,1104,605,1923,27.6,83.2],[17335,1111,593,1923,27.6,83.2],[17355,1104,591,1929,27.6,82.9],[17375,1111,578,1927,27.6,82.5],[17395,1104,603,1936,27.6,82.5],[17415,1119,594,1929,27.6,82.8],[17435,1114,587,1936,27.6,82.7],[17455,1122,581,1927,27.6,82.7],[17475,1109,590,1927,27.6,82.9],[17495,1121,577,1925,27.6,82.7],[17515,1109,586,1940,27.6,82.7],[17535,1107,596,1938,27.6,82.7],[17556,1108,603,1936,27.6,82.8],[17576,1126,589,1938,27.6,82.7],[17596,1113,595,1935,27.6,82.7],[17616,1125,611,1938,27.6,82.8],[17636,1118,591,1936,27.6,82.6],[17656,1111,596,1936,27.6,82.7],[17676,1111,592,1953,27.6,82.5],[17696,1132,599,1955,27.6,82.6],[17716,1110,613,1946,27.6,82.5],[17736,1131,595,1952,27.6,82.7],[17756,1111,607,1945,27.6,82.9],[17776,1111,607,1946,27.6,82.9],[17796,1130,595,1953,27.6,83.1],[17816,1110,607,1947,27.6,82.9],[17836,1136,594,1954,27.6,82.7],[17856,1117,614,1968,27.6,82.6],[17876,1120,595,1958,27.5,82.7],[17897,1131,607,1946,27.6,82.8],[17917,1116,611,1962,27.6,82.7],[17937,1119,603,1957,27.6,82.8],[17957,1123,605,1950,27.6,82.6],[17977,1138,590,1965,27.6,82.7],[17997,1133,607,1968,27.6,82.8],[18017,1121,624,1954,27.6,82.9],[18037,1134,606,1965,27.5,82.8],[18057,1136,608,1967,27.5,82.9],[18077,1136,621,1959,27.5,83.0],[18097,1136,609,1968,27.5,83.2],[18117,1123,610,1970,27.5,82.9],[18137,1114,610,1978,27.5,82.7],[18157,1133,618,1971,27.5,82.6],[18177,1125,621,1970,27.5,82.7],[18197,1133,606,1969,27.5,82.6],[18218,1136,621,1970,27.5,82.5],[18238,1134,613,1968,27.5,82.5],[18258,1135,624,1968,27.5,82.6],[18278,1143,611,1981,27.5,82.6],[18298,1146,624,1979,27.5,82.9],[18318,1133,623,1981,27.5,82.9],[18338,1138,608,1976,27.5,82.9],[18358,1135,614,1975,27.5,82.8],[18378,1133,623,1994,27.5,82.7],[18398,1146,617,1986,27.5,83.0],[18418,1141,606,1977,27.5,82.9],[18438,1137,619,1986,27.5,83.0],[18458,1148,623,2002,27.5,83.0],[18478,1158,608,1988,27.5,83.1],[18498,1146,624,1994,27.5,83.0],[18518,1137,625,1994,27.5,82.5],[18538,1152,633,1990,27.5,82.5],[18559,1136,616,2000,27.5,82.6],[18579,1146,624,1984,27.5,82.8],[18599,1143,613,1992,27.4,83.0],[18619,1152,633,2000,27.4,83.0],[18639,1161,623,2003,27.4,83.1],[18659,1146,634,2007,27.5,83.0],[18679,1138,639,2006,27.4,82.9],[18699,1146,624,2010,27.4,83.0],[18719,1158,628,2002,27.4,83.0],[18739,1162,624,2002,27.5,83.2],[18759,1157,628,2010,27.4,83.1],[18779,1152,622,2002,27.5,83.2],[18799,1151,626,2015,27.5,83.3],[18819,1152,624,2017,27.4,83.1],[18839,1152,635,2005,27.4,83.1],[18859,1159,627,2000,27.4,83.1],[18879,1155,623,2010,27.4,83.0],[18900,1169,630,2019,27.5,83.1],[18920,1149,629,2008,27.4,82.9],[18940,1159,631,2003,27.4,83.0],[18960,1157,634,2011,27.4,83.0],[18980,1154,626,2000,27.4,83.1],[19000,1181,630,2016,27.5,83.1],[19020,1159,622,2029,27.5,83.0],[19040,1154,644,2032,27.4,82.9],[19060,1168,635,2031,27.4,83.1],[19080,1167,629,2029,27.4,83.0],[19100,1159,630,2038,27.4,82.8],[19120,1168,640,2016,27.4,82.8],[19140,1154,644,2034,27.4,82.8],[19160,1165,645,2037,27.4,82.9],[19180,1170,647,2021,27.5,82.9],[19200,1175,631,2032,27.4,83.1],[19220,1165,644,2043,27.4,83.1],[19241,1173,640,2012,27.4,83.1],[19261,1168,640,2032,27.4,83.0],[19281,1168,640,2041,27.5,82.9],[19301,1161,631,2034,27.4,83.1],[19321,1177,644,2043,27.4,83.0],[19341,1170,654,2035,27.4,83.1],[19361,1180,638,2045,27.4,83.0],[19381,1179,635,2032,27.4,82.9],[19401,1181,656,2039,27.4,82.9],[19421,1175,645,2054,27.4,83.1],[19441,1184,642,2047,27.4,82.9],[19461,1169,651,2043,27.4,83.0],[19481,1175,650,2057,27.4,83.2],[19501,1181,642,2057,27.4,83.3],[19521,1187,635,2062,27.4,83.3],[19541,1169,651,2061,27.4,83.4],[19562,1170,655,2067,27.4,83.3],[19582,1167,644,2070,27.4,83.3],[19602,1186,648,2057,27.4,83.2],[19622,1200,653,2070,27.4,83.2],[19642,1173,656,2069,27.4,83.1],[19662,1179,655,2081,27.4,83.1],[19682,1198,650,2078,27.4,83.2],[19702,1201,653,2065,27.4,83.4],[19722,1190,651,2069,27.4,83.5],[19742,1198,659,2067,27.4,83.4],[19762,1199,667,2078,27.4,83.5],[19782,1184,645,2087,27.4,83.5],[19802,1193,656,2077,27.4,83.5],[19822,1195,651,2085,27.4,83.2],[19842,1181,663,2087,27.4,83.3],[19862,1186,656,2089,27.4,83.5],[19882,1187,656,2096,27.4,83.3],[19903,1205,659,2093,27.4,83.3],[19923,1211,667,2096,27.4,83.5],[19943,1207,668,2084,27.4,83.7],[19963,1202,671,2095,27.4,84.0],[19983,1206,656,2093,27.4,84.3],[20003,1197,656,2090,27.4,84.3],[20023,1200,678,2103,27.4,84.5],[20043,1200,678,2118,27.4,84.5],[20063,1218,662,2111,27.4,84.5],[20083,1200,685,2109,27.4,84.6],[20103,1217,660,2101,27.4,84.7],[20123,1213,682,2106,27.4,84.7],[20143,1200,669,2107,27.4,84.8],[20163,1214,663,2117,27.4,84.8],[20183,1211,667,2112,27.4,84.7],[20203,1212,673,2114,27.4,84.8],[20224,1200,658,2126,27.3,85.0],[20244,1222,675,2122,27.3,85.0],[20264,1210,677,2118,27.3,85.1],[20284,1208,673,2119,27.2,85.3],[20304,1200,669,2128,27.2,85.3],[20324,1214,672,2127,27.2,85.4],[20344,1209,675,2126,27.2,85.6],[20364,1217,677,2130,27.2,85.6],[20384,1221,676,2119,27.2,85.8],[20404,1207,688,2128,27.2,85.9],[20424,1232,672,2134,27.2,86.0],[20444,1227,672,2122,27.1,86.0],[20464,1232,675,2128,27.1,86.0],[20484,1226,680,2153,27.1,86.0],[20504,1234,669,2129,27.1,85.9],[20524,1231,678,2128,27.1,85.9],[20544,1221,689,2149,27.1,86.0],[20565,1239,679,2141,27.0,86.1],[20585,1235,688,2128,27.0,86.2],[20605,1230,695,2162,27.0,86.3],[20625,1232,674,2139,27.0,86.4],[20645,1232,679,2149,27.0,86.5],[20665,1226,694,2153,27.0,86.5],[20685,1233,662,2149,26.9,86.7],[20705,1241,688,2154,26.9,86.8],[20725,1236,699,2158,26.9,86.8],[20745,1232,695,2152,26.9,86.9],[20765,1232,698,2162,26.9,87.0],[20785,1235,698,2155,26.9,87.0],[20805,1235,713,2160,26.9,87.1],[20825,1255,692,2162,26.9,87.1],[20845,1250,718,2164,26.9,87.0],[20865,1240,693,2165,26.9,87.0],[20885,1239,682,2157,26.9,86.9],[20906,1238,698,2167,26.9,87.0],[20926,1236,688,2169,26.9,87.0],[20946,1248,703,2157,26.9,87.1],[20966,1253,709,2163,26.8,87.1],[20986,1238,703,2167,26.8,87.3],[21006,1259,703,2169,26.8,87.3],[21026,1232,719,2173,26.8,87.4],[21046,1245,709,2171,26.8,87.5],[21066,1242,711,2167,26.8,87.5],[21086,1255,695,2182,26.8,87.7],[21106,1257,706,2185,26.8,87.7],[21126,1261,701,2186,26.8,87.7],[21146,1264,713,2171,26.7,87.8],[21166,1255,702,2187,26.8,87.8],[21186,1242,717,2186,26.8,87.7],[21206,1259,693,2191,26.8,87.7],[21226,1260,709,2187,26.7,87.6],[21247,1263,719,2185,26.7,87.8],[21267,1249,706,2183,26.7,87.8],[21287,1255,705,2194,26.7,87.8],[21307,1264,717,2177,26.7,87.8],[21327,1264,695,2187,26.7,87.9],[21347,1275,708,2208,26.7,87.9],[21367,1265,702,2192,26.7,88.0],[21387,1266,708,2197,26.7,88.0],[21407,1255,723,2209,26.7,88.1],[21427,1261,713,2210,26.7,88.2],[21447,1269,713,2207,26.7,88.2],[21467,1264,710,2203,26.7,88.2],[21487,1274,707,2210,26.7,88.2],[21507,1264,720,2221,26.7,88.2],[21527,1279,717,2203,26.7,88.1],[21547,1267,708,2221,26.7,88.1],[21568,1273,731,2210,26.7,88.1],[21588,1269,709,2206,26.6,88.1],[21608,1258,713,2212,26.6,88.1],[21628,1280,720,2213,26.6,88.2],[21648,1280,717,2215,26.6,88.3],[21668,1270,731,2224,26.6,88.3],[21688,1266,725,2224,26.6,88.4],[21708,1277,725,2218,26.6,88.4],[21728,1279,720,2211,26.6,88.5],[21748,1277,726,2217,26.6,88.5],[21768,1281,730,2224,26.6,88.5],[21788,1285,719,2224,26.6,88.5],[21808,1287,719,2240,26.6,88.5],[21828,1278,719,2226,26.6,88.6],[21848,1289,737,2230,26.7,88.6],[21868,1295,725,2230,26.7,88.5],[21888,1293,728,2240,26.7,88.5],[21909,1280,714,2231,26.6,88.3],[21929,1289,726,2243,26.7,88.3],[21949,1296,734,2240,26.6,88.3],[21969,1275,720,2248,26.6,88.3],[21989,1278,721,2240,26.6,88.4],[22009,1299,723,2235,26.6,88.4],[22029,1291,710,2245,26.6,88.4],[22049,1286,729,2252,26.6,88.5],[22069,1283,720,2242,26.6,88.5],[22089,1303,734,2245,26.6,88.6],[22109,1296,720,2243,26.6,88.6],[22129,1310,732,2249,26.6,88.5],[22149,1291,733,2254,26.7,88.4],[22169,1307,734,2256,26.7,88.5],[22189,1296,736,2257,26.7,88.5],[22209,1300,735,2260,26.7,88.5],[22230,1297,735,2253,26.7,88.4],[22250,1284,754,2269,26.8,88.4],[22270,1296,752,2261,26.8,88.4],[22290,1303,741,2279,26.8,88.3],[22310,1311,742,2254,26.8,88.2],[22330,1310,747,2267,26.9,88.1],[22350,1291,739,2283,26.9,88.1],[22370,1309,743,2276,26.9,88.2],[22390,1323,741,2283,26.9,88.2],[22410,1302,737,2273,26.9,88.1],[22430,1312,733,2287,27.0,88.0],[22450,1305,745,2289,27.0,87.8],[22470,1301,763,2282,27.0,87.7],[22490,1302,742,2288,27.0,87.7],[22510,1306,751,2277,27.0,87.7],[22530,1309,759,2286,27.1,87.7],[22550,1326,763,2301,27.1,87.7],[22571,1317,741,2282,27.1,87.7],[22591,1327,752,2299,27.1,87.6],[22611,1306,745,2298,27.1,87.6],[22631,1312,754,2293,27.2,87.5],[22651,1305,759,2291,27.2,87.4],[22671,1331,753,2307,27.2,87.4],[22691,1321,752,2294,27.2,87.4],[22711,1330,747,2311,27.2,87.4],[22731,1327,763,2315,27.2,87.3],[22751,1328,768,2299,27.3,87.2],[22771,1323,762,2317,27.3,87.2],[22791,1317,764,2320,27.3,87.1],[22811,1318,752,2305,27.3,87.1],[22831,1328,763,2318,27.3,87.1],[22851,1342,756,2315,27.4,87.0],[22871,1329,765,2318,27.4,86.9],[22891,1317,773,2323,27.4,86.9],[22912,1334,765,2307,27.4,86.9],[22932,1325,775,2319,27.4,86.9],[22952,1325,767,2323,27.4,86.7],[22972,1333,783,2316,27.4,86.8],[22992,1328,770,2321,27.4,86.8],[23012,1329,757,2325,27.5,86.7],[23032,1346,774,2313,27.5,86.6],[23052,1323,780,2345,27.5,86.6],[23072,1328,772,2332,27.5,86.5],[23092,1328,770,2331,27.5,86.4],[23112,1343,781,2342,27.5,86.5],[23132,1350,784,2332,27.5,86.5],[23152,1344,798,2331,27.6,86.5],[23172,1331,777,2326,27.6,86.4],[23192,1337,784,2335,27.6,86.4],[23212,1344,786,2352,27.6,86.3],[23232,1337,779,2338,27.6,86.4],[23253,1334,783,2343,27.6,86.3],[23273,1343,773,2351,27.6,86.3],[23293,1349,784,2355,27.6,86.3],[23313,1351,784,2351,27.6,86.2],[23333,1347,777,2349,27.6,86.4],[23353,1345,775,2365,27.6,86.2],[23373,1342,769,2352,27.6,86.3],[23393,1360,784,2359,27.7,86.2],[23413,1357,790,2366,27.7,86.1],[23433,1358,788,2365,27.7,86.1],[23453,1355,779,2375,27.7,86.1],[23473,1362,793,2352,27.7,86.1],[23493,1343,788,2374,27.7,86.0],[23513,1365,772,2366,27.7,86.0],[23533,1355,786,2359,27.7,86.0],[23553,1357,782,2371,27.7,86.0],[23574,1367,781,2355,27.7,86.0],[23594,1350,805,2369,27.7,86.1],[23614,1350,790,2371,27.7,86.0],[23634,1353,782,2373,27.8,86.2],[23654,1359,786,2368,27.8,86.0],[23674,1361,785,2367,27.8,86.0],[23694,1356,800,2386,27.8,86.0],[23714,1360,790,2366,27.8,86.0],[23734,1367,793,2383,27.8,85.9],[23754,1360,791,2375,27.8,85.9],[23774,1358,791,2379,27.8,86.0],[23794,1378,793,2384,27.8,85.9],[23814,1360,802,2379,27.8,86.0],[23834,1371,811,2379,27.8,85.9],[23854,1360,793,2385,27.8,85.9],[23874,1373,800,2383,27.8,85.9],[23894,1381,799,2395,27.8,85.9],[23915,1367,800,2382,27.8,86.0],[23935,1368,807,2401,27.8,85.9],[23955,1366,800,2388,27.8,86.0],[23975,1381,816,2384,27.8,85.9],[23995,1379,798,2400,27.8,85.9],[24015,1385,805,2405,27.8,85.8],[24035,1392,816,2396,27.8,85.8],[24055,1376,816,2409,27.8,85.9],[24075,1381,805,2394,27.8,85.9],[24095,1363,817,2399,27.9,86.0],[24115,1382,797,2414,27.8,86.0],[24135,1366,809,2394,27.9,86.1],[24155,1371,803,2409,27.8,86.1],[24175,1375,811,2391,27.8,85.9],[24195,1385,805,2399,27.8,85.9],[24215,1387,822,2406,27.8,86.0],[24236,1390,818,2417,27.8,86.1],[24256,1392,811,2416,27.8,86.1],[24276,1381,820,2421,27.8,86.0],[24296,1392,814,2422,27.8,86.1],[24316,1391,803,2417,27.9,86.1],[24336,1392,819,2411,27.9,86.1],[24356,1393,813,2419,27.8,86.2],[24376,1381,810,2417,27.8,86.1],[24396,1385,810,2422,27.8,86.1],[24416,1294,786,2352,27.9,86.0],[24436,1435,863,2512,27.8,86.0],[24456,1424,841,2463,27.9,86.0],[24476,1415,847,2439,27.9,86.1],[24496,1411,832,2435,27.9,86.1],[24516,1407,857,2447,27.9,86.0],[24536,1424,848,2467,27.9,86.0],[24556,1410,861,2455,27.9,86.1],[24577,1408,864,2465,27.9,86.1],[24597,1409,868,2466,27.9,86.1],[24617,1418,863,2462,27.9,86.1],[24637,1407,862,2466,27.9,86.1],[24657,1424,866,2480,27.9,86.1],[24677,1414,867,2471,27.9,86.1],[24697,1409,876,2475,27.9,86.0],[24717,1413,861,2477,27.9,86.0],[24737,1417,860,2481,27.9,85.8],[24757,1417,863,2490,27.9,86.0],[24777,1410,871,2486,27.9,85.8],[24797,1421,866,2471,27.8,85.9],[24817,1424,876,2493,27.9,86.0],[24837,1419,874,2469,27.8,86.0],[24857,1416,865,2483,27.9,86.1],[24877,1412,865,2486,27.8,86.1],[24897,1428,879,2486,27.9,86.2],[24918,1417,865,2485,27.8,86.2],[24938,1425,874,2480,27.8,86.2],[24958,1429,870,2480,27.8,86.2],[24978,1438,865,2480,27.8,86.3],[24998,1439,877,2502,27.8,86.3],[25018,1439,881,2487,27.8,86.3],[25038,1433,883,2493,27.8,86.3],[25058,1430,882,2493,27.8,86.3],[25078,1424,879,2480,27.8,86.3],[25098,1447,875,2506,27.8,86.3],[25118,1434,879,2510,27.8,86.3],[25138,1431,887,2500,27.8,86.3],[25158,1437,874,2496,27.8,86.3],[25178,1441,881,2501,27.8,86.3],[25198,1433,885,2507,27.9,86.3],[25218,1455,880,2495,27.8,86.3],[25238,1451,877,2512,27.8,86.3],[25259,1449,877,2496,27.8,86.2],[25279,1436,892,2506,27.8,86.3],[25299,1439,880,2501,27.8,86.2],[25319,1438,883,2505,27.8,86.3],[25339,1440,889,2494,27.8,86.3],[25359,1435,883,2509,27.8,86.3],[25379,1453,891,2503,27.8,86.3],[25399,1454,878,2511,27.8,86.4],[25419,1441,890,2510,27.8,86.4],[25439,1453,891,2507,27.8,86.5],[25459,1442,886,2526,27.8,86.6],[25479,1445,887,2525,27.8,86.5],[25499,1447,881,2512,27.8,86.5],[25519,1446,883,2512,27.8,86.6],[25539,1462,881,2522,27.8,86.5],[25559,1457,889,2523,27.8,86.6],[25580,1457,895,2517,27.8,86.5],[25600,1461,881,2521,27.8,86.7],[25620,1455,883,2514,27.8,86.6],[25640,1455,880,2518,27.8,86.7],[25660,1459,891,2526,27.8,86.6],[25680,1456,880,2535,27.8,86.6],[25700,1456,893,2526,27.8,86.5],[25720,1466,900,2523,27.8,86.5],[25740,1463,892,2538,27.8,86.4],[25760,1458,891,2538,27.8,86.5],[25780,1468,897,2533,27.8,86.5],[25800,1469,893,2538,27.8,86.6],[25820,1461,893,2525,27.8,86.7],[25840,1471,897,2518,27.8,86.6],[25860,1474,897,2526,27.8,86.7],[25880,1459,895,2530,27.8,86.7],[25900,1471,896,2524,27.8,86.7],[25921,1467,907,2538,27.8,86.8],[25941,1461,894,2525,27.8,86.8],[25961,1474,896,2531,27.8,86.7],[25981,1468,911,2525,27.8,86.7],[26001,1470,912,2535,27.7,86.7],[26021,1485,912,2535,27.8,86.8],[26041,1469,911,2542,27.8,86.8],[26061,1451,906,2544,27.8,86.9],[26081,1457,905,2542,27.8,86.8],[26101,1456,897,2544,27.8,86.8],[26121,1481,897,2551,27.8,86.8],[26141,1475,915,2542,27.8,86.8],[26161,1459,912,2559,27.8,86.8],[26181,1473,911,2544,27.8,86.8],[26201,1466,899,2545,27.8,86.8]];                         // [time_s, MQ135, MQ136, MQ137, 온도, 습도] 20초 간격
+var PAST="H,3,2511,962,3857,28.4,67.4\nH,23,2047,720,3029,28.4,67.5\nH,43,1811,615,2581,28.4,67.5\nH,63,1667,563,2320,28.4,67.4\nH,83,1590,528,2161,28.5,67.9\nH,103,1521,511,2059,28.5,67.9\nH,123,1477,503,1968,28.5,67.9\nH,143,1424,484,1898,28.5,67.9\nH,164,1388,459,1826,28.6,67.9\nH,184,1354,450,1778,28.6,67.8\nH,204,1319,453,1738,28.6,67.5\nH,224,1297,437,1681,28.7,67.4\nH,244,1267,401,1655,28.7,67.4\nH,264,1261,416,1642,28.7,67.5\nH,284,1230,393,1615,28.7,67.4\nH,304,1202,400,1575,28.7,67.3\nH,324,1193,400,1535,28.7,67.6\nH,344,1181,398,1519,28.7,67.6\nH,364,1152,406,1523,28.7,67.7\nH,384,1133,371,1488,28.6,67.8\nH,404,1145,394,1478,28.6,67.9\nH,424,1102,365,1479,28.6,67.6\nH,444,1102,371,1459,28.6,68.0\nH,464,1091,368,1439,28.5,67.9\nH,484,1083,353,1422,28.5,68.1\nH,505,1082,364,1407,28.5,67.9\nH,525,1060,359,1418,28.5,68.3\nH,545,1059,359,1399,28.5,68.2\nH,565,1051,352,1390,28.5,68.3\nH,585,1056,361,1377,28.5,68.1\nH,605,1033,349,1363,28.5,68.4\nH,625,1020,336,1366,28.5,68.0\nH,645,999,343,1354,28.4,68.2\nH,665,997,322,1349,28.4,68.6\nH,685,987,332,1334,28.4,68.7\nH,705,983,331,1349,28.4,68.4\nH,725,989,336,1338,28.3,68.4\nH,745,974,314,1333,28.3,68.5\nH,765,976,320,1323,28.3,68.6\nH,785,963,311,1330,28.3,68.7\nH,805,960,304,1312,28.3,68.7\nH,825,959,307,1305,28.3,68.8\nH,846,948,305,1301,28.3,68.8\nH,866,944,315,1309,28.2,68.8\nH,886,952,304,1306,28.2,68.8\nH,906,935,304,1296,28.2,68.8\nH,926,930,307,1291,28.2,68.9\nH,946,912,301,1289,28.2,68.9\nH,966,912,299,1293,28.2,69.0\nH,986,923,299,1283,28.1,69.1\nH,1006,914,290,1281,28.1,69.4\nH,1026,913,297,1290,28.1,69.2\nH,1046,898,297,1267,28.1,69.3\nH,1066,925,301,1286,28.1,69.5\nH,1086,911,279,1277,28.1,69.5\nH,1106,901,304,1271,28.1,69.4\nH,1126,902,299,1278,28.1,69.7\nH,1146,903,296,1249,28.1,69.5\nH,1166,902,291,1259,28.1,69.6\nH,1187,881,279,1262,28.0,69.7\nH,1207,889,272,1264,28.0,69.5\nH,1227,868,272,1269,28.0,69.5\nH,1247,864,278,1263,28.0,69.6\nH,1267,878,288,1258,28.0,69.8\nH,1287,867,272,1264,27.9,69.9\nH,1307,846,270,1247,27.9,69.8\nH,1327,871,253,1260,27.9,69.8\nH,1347,867,269,1263,27.9,70.1\nH,1367,853,257,1253,27.9,70.0\nH,1387,865,272,1258,27.9,70.1\nH,1407,853,260,1250,27.8,70.1\nH,1427,848,265,1243,27.8,70.2\nH,1447,851,272,1254,27.8,70.2\nH,1467,854,263,1248,27.8,70.2\nH,1487,850,228,1247,27.8,70.3\nH,1508,848,269,1262,27.8,70.2\nH,1528,850,256,1249,27.8,70.2\nH,1548,842,266,1254,27.8,70.2\nH,1568,833,253,1243,27.8,70.3\nH,1588,848,261,1239,27.7,70.3\nH,1608,833,261,1233,27.7,70.4\nH,1628,832,266,1255,27.7,70.5\nH,1648,830,268,1245,27.7,70.5\nH,1668,832,249,1236,27.7,70.5\nH,1688,843,262,1249,27.7,70.5\nH,1708,831,262,1250,27.7,70.5\nH,1728,818,238,1249,27.7,70.6\nH,1748,821,252,1267,27.7,70.6\nH,1768,821,244,1243,27.7,70.6\nH,1788,816,241,1255,27.7,70.5\nH,1808,832,254,1244,27.7,70.5\nH,1828,823,256,1261,27.7,70.5\nH,1849,827,242,1264,27.6,70.5\nH,1869,817,249,1247,27.6,70.6\nH,1889,816,254,1250,27.6,70.7\nH,1909,820,241,1253,27.6,70.7\nH,1929,801,239,1242,27.6,70.8\nH,1949,802,240,1265,27.5,70.8\nH,1969,815,246,1257,27.5,70.8\nH,1989,817,241,1247,27.5,70.9\nH,2009,811,245,1245,27.5,70.9\nH,2029,812,236,1251,27.5,70.9\nH,2049,805,240,1245,27.5,70.9\nH,2069,816,262,1258,27.5,70.9\nH,2089,803,238,1249,27.5,70.9\nH,2109,799,235,1232,27.5,70.8\nH,2129,813,227,1241,27.5,70.9\nH,2149,796,240,1238,27.5,70.9\nH,2170,810,237,1251,27.4,70.9\nH,2190,785,241,1234,27.4,71.0\nH,2210,800,241,1237,27.4,71.0\nH,2230,806,235,1261,27.4,71.1\nH,2250,797,237,1232,27.4,71.1\nH,2270,793,233,1234,27.4,71.1\nH,2290,795,218,1243,27.4,71.2\nH,2310,784,240,1248,27.4,71.2\nH,2330,792,237,1235,27.4,71.2\nH,2350,794,215,1239,27.4,71.2\nH,2370,785,230,1250,27.4,71.2\nH,2390,790,223,1244,27.4,71.1\nH,2410,779,229,1237,27.4,71.1\nH,2430,801,230,1234,27.4,71.1\nH,2450,785,237,1251,27.3,71.1\nH,2470,778,241,1245,27.3,71.2\nH,2490,787,219,1250,27.3,71.2\nH,2511,781,239,1251,27.3,71.2\nH,2531,797,223,1246,27.3,71.3\nH,2551,772,229,1250,27.3,71.3\nH,2571,787,235,1231,27.3,71.3\nH,2591,785,238,1250,27.3,71.3\nH,2611,781,223,1235,27.3,71.3\nH,2631,779,210,1237,27.2,71.4\nH,2651,788,221,1248,27.3,71.4\nH,2671,769,213,1257,27.3,71.4\nH,2691,784,222,1242,27.3,71.3\nH,2711,779,223,1231,27.2,71.3\nH,2731,783,226,1242,27.2,71.2\nH,2751,764,237,1255,27.2,71.2\nH,2771,777,208,1245,27.2,71.3\nH,2791,777,212,1236,27.2,71.3\nH,2811,768,212,1227,27.2,71.4\nH,2831,774,239,1233,27.2,71.4\nH,2852,782,224,1255,27.1,71.4\nH,2872,768,227,1262,27.1,71.5\nH,2892,768,218,1234,27.1,71.5\nH,2912,779,223,1234,27.1,71.5\nH,2932,768,238,1242,27.1,71.5\nH,2952,775,217,1238,27.1,71.5\nH,2972,771,210,1239,27.1,71.5\nH,2992,783,226,1249,27.1,71.6\nH,3012,775,215,1258,27.1,71.5\nH,3032,782,211,1235,27.1,71.4\nH,3052,782,226,1250,27.1,71.5\nH,3072,774,218,1236,27.1,71.4\nH,3092,767,234,1248,27.1,71.4\nH,3112,767,215,1238,27.0,71.4\nH,3132,765,223,1239,27.0,71.5\nH,3152,775,213,1242,27.0,71.5\nH,3172,778,222,1242,27.0,71.6\nH,3193,752,221,1241,27.0,71.7\nH,3213,747,225,1240,26.9,71.7\nH,3233,752,233,1232,26.9,71.8\nH,3253,777,238,1249,26.9,71.8\nH,3273,774,224,1243,26.9,71.8\nH,3293,774,223,1249,26.9,71.9\nH,3313,770,219,1232,26.9,71.8\nH,3333,752,215,1237,26.9,71.8\nH,3353,758,221,1251,26.9,71.8\nH,3373,775,213,1253,26.9,71.7\nH,3393,758,209,1259,26.9,71.7\nH,3413,766,218,1239,26.9,71.8\nH,3433,762,213,1233,26.8,71.7\nH,3453,762,236,1249,26.8,71.8\nH,3473,756,218,1231,26.8,71.8\nH,3493,777,230,1247,26.8,71.9\nH,3514,775,221,1247,26.8,72.0\nH,3534,755,208,1245,26.8,71.9\nH,3554,753,202,1234,26.8,72.0\nH,3574,763,237,1243,26.8,72.0\nH,3594,782,209,1242,26.7,72.1\nH,3614,768,234,1248,26.7,72.1\nH,3634,765,215,1238,26.7,72.1\nH,3654,766,227,1248,26.7,72.1\nI,218.0,3660,765.0,1245.0,1\nH,3674,754,219,1243,26.7,72.0\nH,3694,763,220,1256,26.8,72.0\nH,3714,765,217,1243,26.7,72.0\nH,3734,752,193,1249,26.8,71.9\nH,3754,816,292,1392,26.7,70.2\nH,3774,864,363,1511,26.7,68.9\nH,3794,887,375,1580,26.7,68.7\nH,3814,875,394,1583,26.7,69.0\nH,3834,911,384,1619,26.7,69.5\nH,3855,929,400,1637,26.6,69.9\nH,3875,957,443,1696,26.6,70.4\nH,3895,979,423,1680,26.6,71.0\nH,3915,974,461,1685,26.6,71.4\nH,3935,979,459,1696,26.6,71.8\nH,3955,983,454,1690,26.6,72.2\nH,3975,974,464,1695,26.6,72.6\nL,3975,주의,80.7,0,22.9\nH,3995,983,448,1686,26.6,72.9\nH,4015,976,464,1690,26.6,73.3\nH,4035,982,474,1682,26.6,73.6\nH,4055,979,461,1710,26.6,73.8\nH,4075,976,464,1692,26.7,74.1\nH,4095,978,484,1691,26.7,74.4\nH,4115,970,464,1703,26.6,74.6\nH,4135,974,494,1697,26.7,74.9\nH,4155,966,484,1709,26.7,75.2\nH,4176,976,466,1699,26.6,75.5\nH,4196,971,466,1702,26.6,75.7\nH,4216,970,464,1697,26.6,75.9\nH,4236,963,466,1702,26.6,76.3\nH,4256,979,464,1694,26.6,76.5\nH,4276,970,487,1695,26.5,76.8\nH,4296,972,476,1703,26.5,77.1\nH,4316,981,480,1693,26.5,77.3\nH,4336,964,470,1703,26.4,77.6\nH,4356,963,469,1698,26.4,77.8\nH,4376,965,490,1706,26.4,78.1\nH,4396,964,493,1691,26.4,78.3\nH,4416,976,471,1685,26.4,78.5\nH,4436,972,461,1679,26.4,78.6\nH,4456,966,485,1681,26.4,78.8\nH,4476,970,476,1691,26.3,79.0\nH,4496,969,469,1687,26.4,79.1\nH,4517,957,483,1690,26.4,79.3\nH,4537,976,474,1683,26.4,79.3\nH,4557,971,481,1684,26.4,79.4\nH,4577,966,483,1683,26.4,79.5\nH,4597,963,478,1683,26.4,79.7\nH,4617,973,479,1683,26.4,79.8\nH,4637,950,479,1687,26.4,79.9\nH,4657,963,464,1690,26.4,80.0\nH,4677,963,473,1680,26.4,80.2\nH,4697,967,477,1690,26.4,80.3\nH,4717,956,479,1680,26.4,80.3\nH,4737,973,466,1687,26.4,80.4\nH,4757,957,486,1691,26.4,80.5\nH,4777,976,470,1686,26.4,80.6\nH,4797,955,471,1667,26.5,80.6\nH,4817,954,470,1680,26.5,80.7\nH,4837,971,480,1683,26.5,80.7\nH,4858,960,462,1678,26.5,80.7\nH,4878,947,479,1678,26.5,80.7\nH,4898,953,490,1684,26.5,80.7\nH,4918,965,463,1677,26.5,80.8\nH,4938,971,473,1678,26.5,80.8\nH,4958,949,477,1673,26.5,80.9\nH,4978,961,468,1680,26.5,81.0\nH,4998,956,478,1667,26.5,81.1\nH,5018,947,473,1672,26.6,81.2\nH,5038,965,471,1680,26.5,81.2\nH,5058,959,474,1675,26.5,81.3\nH,5078,948,464,1666,26.6,81.4\nH,5098,946,464,1680,26.6,81.4\nH,5118,956,479,1665,26.6,81.5\nH,5138,962,487,1667,26.6,81.5\nH,5158,957,470,1680,26.6,81.5\nH,5178,954,478,1662,26.6,81.6\nH,5199,963,474,1682,26.6,81.5\nH,5219,945,474,1677,26.7,81.6\nH,5239,967,461,1679,26.6,81.5\nH,5259,960,464,1667,26.6,81.6\nH,5279,946,465,1675,26.6,81.7\nH,5299,967,461,1679,26.6,81.8\nH,5319,960,464,1666,26.6,81.9\nH,5339,955,465,1666,26.6,81.9\nH,5359,966,466,1667,26.6,82.0\nH,5379,951,476,1670,26.6,82.1\nH,5399,944,469,1665,26.7,82.2\nH,5419,964,471,1675,26.7,82.2\nH,5439,976,482,1670,26.7,82.2\nH,5459,973,468,1661,26.7,82.2\nH,5479,951,479,1661,26.7,82.3\nH,5499,971,473,1675,26.7,82.3\nH,5520,959,463,1673,26.7,82.3\nH,5540,966,469,1664,26.7,82.3\nH,5560,957,463,1653,26.7,82.3\nH,5580,961,479,1679,26.7,82.4\nH,5600,971,453,1676,26.7,82.4\nH,5620,963,475,1664,26.7,82.4\nH,5640,970,468,1679,26.7,82.5\nH,5660,960,464,1662,26.7,82.5\nH,5680,958,465,1679,26.8,82.5\nH,5700,962,465,1678,26.7,82.5\nH,5720,967,450,1663,26.8,82.6\nH,5740,960,469,1680,26.8,82.6\nH,5760,961,466,1665,26.8,82.6\nH,5780,966,465,1663,26.8,82.6\nH,5800,944,479,1677,26.8,82.6\nH,5820,945,467,1684,26.8,82.6\nH,5840,962,461,1658,26.8,82.6\nH,5861,948,475,1680,26.8,82.7\nH,5881,945,471,1680,26.8,82.7\nH,5901,950,470,1678,26.8,82.8\nH,5921,948,465,1674,26.8,82.8\nH,5941,961,458,1673,26.8,82.9\nH,5961,961,475,1680,26.8,82.8\nH,5981,958,458,1673,26.8,82.9\nH,6001,961,479,1670,26.8,82.9\nH,6021,958,465,1660,26.8,82.9\nH,6041,959,464,1664,26.8,82.9\nH,6061,958,453,1659,26.8,83.0\nH,6081,950,453,1663,26.9,83.0\nH,6101,958,466,1661,26.9,83.0\nH,6121,958,479,1689,26.9,83.0\nH,6141,969,464,1681,26.9,83.0\nH,6161,943,459,1658,26.9,83.0\nH,6182,945,484,1671,26.9,83.0\nH,6202,947,473,1665,26.9,83.1\nH,6222,949,477,1655,26.9,83.1\nH,6242,946,465,1665,26.9,83.2\nH,6262,955,469,1671,26.9,83.2\nH,6282,954,467,1675,26.9,83.2\nH,6302,971,464,1665,26.9,83.3\nH,6322,970,452,1669,26.9,83.3\nH,6342,947,477,1677,26.9,83.3\nH,6362,946,474,1681,26.9,83.3\nH,6382,966,455,1663,26.9,83.3\nH,6402,961,469,1668,26.9,83.3\nH,6422,950,464,1668,26.9,83.3\nH,6442,947,451,1646,26.9,83.3\nH,6462,947,459,1678,26.9,83.4\nH,6482,950,461,1664,26.9,83.4\nH,6502,950,479,1673,26.9,83.5\nH,6523,963,479,1673,27.0,83.6\nH,6543,972,463,1680,26.9,83.6\nH,6563,960,458,1671,26.9,83.5\nH,6583,954,461,1681,27.0,83.6\nH,6603,961,473,1675,26.9,83.6\nH,6623,946,472,1671,27.0,83.6\nH,6643,955,461,1673,27.0,83.6\nH,6663,966,464,1665,27.0,83.5\nH,6683,954,459,1665,27.0,83.6\nH,6703,971,464,1680,27.0,83.5\nH,6723,958,456,1661,27.0,83.6\nH,6743,951,467,1669,26.9,83.6\nH,6763,960,462,1675,26.9,83.6\nH,6783,946,468,1675,26.9,83.6\nH,6803,949,449,1664,26.8,83.7\nH,6823,957,468,1681,26.8,83.8\nH,6843,950,464,1668,26.8,83.8\nH,6864,953,465,1680,26.7,83.8\nH,6884,946,464,1655,26.7,83.9\nH,6904,951,466,1670,26.6,84.0\nH,6924,954,480,1662,26.6,84.0\nH,6944,955,454,1655,26.5,84.2\nH,6964,961,459,1648,26.5,84.3\nH,6984,949,475,1658,26.4,84.6\nH,7004,955,461,1663,26.4,84.8\nH,7024,959,466,1653,26.4,85.0\nH,7044,942,473,1663,26.4,85.2\nH,7064,959,462,1646,26.3,85.3\nH,7084,941,464,1661,26.3,85.5\nH,7104,944,464,1662,26.3,85.6\nH,7124,954,473,1669,26.3,85.7\nH,7144,943,459,1670,26.3,85.8\nH,7164,959,448,1649,26.3,85.7\nH,7184,959,470,1643,26.3,85.7\nH,7205,954,458,1648,26.3,85.7\nH,7225,959,464,1658,26.3,85.8\nH,7245,949,467,1648,26.2,85.7\nH,7265,959,459,1658,26.2,85.7\nH,7285,945,464,1648,26.2,85.7\nH,7305,944,455,1637,26.1,85.6\nH,7325,944,464,1659,26.1,85.6\nH,7345,940,464,1648,26.1,85.6\nH,7365,942,452,1648,26.0,85.7\nH,7385,942,449,1642,26.0,85.9\nH,7405,947,448,1648,25.9,86.1\nH,7425,944,453,1651,25.9,86.2\nH,7445,950,451,1649,25.9,86.4\nH,7465,946,461,1654,25.9,86.5\nH,7485,960,465,1646,25.9,86.7\nH,7505,951,465,1654,25.9,86.9\nH,7526,945,451,1650,25.9,87.0\nH,7546,941,450,1648,25.9,87.1\nH,7566,944,459,1658,25.9,87.1\nH,7586,962,470,1648,25.9,87.1\nH,7606,939,464,1649,25.9,87.1\nH,7626,956,447,1651,25.9,87.1\nH,7646,947,454,1644,25.9,87.1\nH,7666,940,470,1649,25.9,87.1\nH,7686,933,470,1655,25.9,87.2\nH,7706,946,455,1651,25.9,87.2\nH,7726,944,443,1666,25.8,87.3\nH,7746,935,464,1647,25.9,87.3\nH,7766,945,468,1650,25.9,87.4\nH,7786,941,477,1647,25.8,87.4\nH,7806,944,464,1650,25.9,87.5\nH,7826,955,455,1648,25.9,87.5\nH,7846,948,448,1649,25.9,87.5\nH,7867,933,454,1651,25.9,87.5\nH,7887,949,453,1647,25.9,87.5\nH,7907,954,455,1670,25.9,87.5\nH,7927,934,467,1645,25.9,87.4\nH,7947,944,457,1641,25.9,87.4\nH,7967,955,454,1650,25.9,87.3\nH,7987,950,456,1654,25.9,87.3\nH,8007,955,459,1643,25.9,87.3\nH,8027,944,464,1645,25.9,87.4\nH,8047,944,438,1646,25.8,87.4\nH,8067,947,467,1648,25.8,87.5\nH,8087,960,464,1646,25.8,87.5\nH,8107,945,471,1648,25.9,87.6\nH,8127,945,454,1643,25.8,87.6\nH,8147,967,452,1637,25.9,87.6\nH,8167,942,448,1660,25.9,87.7\nH,8188,957,464,1648,25.9,87.7\nH,8208,948,464,1645,25.9,87.7\nH,8228,945,462,1648,25.9,87.6\nH,8248,944,469,1643,25.9,87.6\nH,8268,955,454,1648,25.9,87.5\nH,8288,944,462,1645,25.8,87.4\nH,8308,955,452,1650,25.8,87.5\nH,8328,944,463,1647,25.8,87.5\nH,8348,945,460,1648,25.8,87.5\nH,8368,961,465,1639,25.8,87.6\nH,8388,955,454,1641,25.8,87.7\nH,8408,942,455,1639,25.8,87.7\nH,8428,949,448,1645,25.8,87.7\nH,8448,939,470,1648,25.8,87.8\nH,8468,944,455,1646,25.8,87.8\nH,8488,942,461,1648,25.8,87.8\nH,8508,951,465,1659,25.8,87.8\nH,8529,936,465,1639,25.8,87.8\nH,8549,946,460,1647,25.8,87.8\nH,8569,943,473,1648,25.8,87.7\nH,8589,946,452,1650,25.9,87.7\nH,8609,945,450,1646,25.8,87.7\nH,8629,935,464,1661,25.8,87.7\nH,8649,949,453,1649,25.8,87.7\nH,8669,954,450,1648,25.8,87.8\nH,8689,942,448,1648,25.8,87.8\nH,8709,961,462,1635,25.8,87.8\nH,8729,937,464,1654,25.8,87.8\nH,8749,959,448,1631,25.8,87.9\nH,8769,945,443,1657,25.8,87.9\nH,8789,965,462,1648,25.9,88.0\nH,8809,939,460,1651,25.8,88.0\nH,8829,947,471,1655,25.9,87.9\nH,8849,939,451,1627,25.9,87.9\nH,8870,941,459,1652,25.9,87.8\nH,8890,940,473,1637,25.9,87.9\nH,8910,933,461,1648,25.9,87.9\nH,8930,944,457,1651,25.9,87.9\nH,8950,945,464,1646,25.9,87.9\nH,8970,951,462,1646,25.9,87.9\nH,8990,938,459,1648,25.9,87.7\nH,9010,950,463,1637,25.9,87.6\nH,9030,949,448,1654,25.9,87.6\nH,9050,947,462,1646,25.9,87.6\nH,9070,946,464,1642,25.9,87.5\nH,9090,943,469,1648,26.0,87.5\nH,9110,962,448,1651,26.0,87.4\nH,9130,949,448,1661,26.0,87.3\nH,9150,960,461,1655,26.0,87.2\nH,9170,965,451,1658,26.1,87.2\nH,9190,960,464,1655,26.1,87.2\nH,9211,944,452,1650,26.1,87.1\nH,9231,960,464,1673,26.2,87.1\nH,9251,951,468,1663,26.2,87.1\nH,9271,950,468,1656,26.2,87.0\nH,9291,960,455,1665,26.2,86.6\nH,9311,949,471,1668,26.3,86.4\nH,9331,964,464,1674,26.3,86.5\nH,9351,974,469,1661,26.3,86.4\nH,9371,960,482,1679,26.4,86.3\nH,9391,955,462,1664,26.4,86.3\nH,9411,955,475,1668,26.4,86.3\nH,9431,958,468,1683,26.5,86.2\nH,9451,965,482,1670,26.5,86.2\nH,9471,970,467,1675,26.5,86.2\nH,9491,965,467,1680,26.6,86.2\nH,9511,970,464,1667,26.6,86.1\nH,9532,961,464,1687,26.6,85.7\nH,9552,963,477,1690,26.6,85.1\nH,9572,972,479,1685,26.7,84.8\nH,9592,974,469,1686,26.7,84.7\nH,9612,960,469,1685,26.7,84.4\nH,9632,965,471,1696,26.8,84.4\nH,9652,971,478,1701,26.8,84.4\nH,9672,963,483,1683,26.8,84.0\nH,9692,970,479,1713,26.8,83.9\nH,9712,962,487,1706,26.9,83.9\nH,9732,977,472,1690,26.9,84.1\nH,9752,971,489,1702,26.9,84.0\nH,9772,971,471,1691,26.9,84.0\nH,9792,970,462,1699,26.9,84.1\nH,9812,967,479,1710,26.9,83.9\nH,9832,970,477,1705,27.0,83.9\nH,9852,965,473,1709,27.0,83.9\nH,9873,971,480,1705,27.0,83.8\nH,9893,978,475,1710,27.0,83.8\nH,9913,977,493,1712,27.0,83.9\nH,9933,992,486,1711,27.0,83.9\nH,9953,988,466,1715,27.0,83.9\nH,9973,976,469,1714,27.0,83.8\nH,9993,976,481,1714,27.0,83.7\nH,10013,988,479,1712,27.0,83.8\nH,10033,979,473,1714,27.1,83.7\nH,10053,970,466,1700,27.1,83.7\nH,10073,979,485,1711,27.1,83.7\nH,10093,981,483,1712,27.1,83.8\nH,10113,976,477,1712,27.1,83.8\nH,10133,983,484,1719,27.1,83.8\nH,10153,986,465,1707,27.1,83.6\nH,10173,983,471,1711,27.1,83.6\nH,10194,991,483,1717,27.2,83.5\nH,10214,988,493,1725,27.2,83.4\nH,10234,980,481,1722,27.1,83.3\nH,10254,997,481,1705,27.1,83.3\nL,10254,부패,120.6,0,34.3\nH,10274,987,500,1708,27.2,83.3\nH,10294,981,496,1703,27.2,83.2\nH,10314,972,482,1722,27.2,83.1\nH,10334,993,487,1718,27.2,83.0\nH,10354,976,486,1709,27.2,83.1\nH,10374,987,497,1722,27.2,83.2\nH,10394,992,482,1715,27.2,83.4\nH,10414,993,489,1714,27.2,83.6\nH,10434,1003,477,1723,27.2,83.7\nH,10454,977,490,1727,27.2,83.7\nH,10474,1008,479,1722,27.3,83.6\nH,10494,979,493,1717,27.2,83.4\nH,10514,986,497,1717,27.3,82.9\nH,10535,982,502,1734,27.3,82.7\nH,10555,990,485,1712,27.3,82.7\nH,10575,993,494,1736,27.3,82.8\nH,10595,998,478,1723,27.3,83.0\nH,10615,1002,488,1731,27.3,82.8\nH,10635,976,482,1715,27.3,82.8\nH,10655,986,481,1726,27.3,82.6\nH,10675,979,490,1713,27.3,82.7\nH,10695,987,511,1724,27.3,82.8\nH,10715,1006,495,1726,27.3,82.7\nH,10735,995,491,1726,27.3,82.7\nH,10755,990,486,1731,27.3,82.7\nH,10775,994,494,1739,27.3,82.8\nH,10795,985,484,1744,27.3,82.8\nH,10815,990,493,1730,27.3,82.8\nH,10835,993,483,1729,27.3,82.8\nH,10855,1003,503,1741,27.3,82.9\nH,10876,992,498,1732,27.3,82.9\nH,10896,1003,493,1734,27.3,82.8\nH,10916,994,497,1734,27.3,82.7\nH,10936,1002,498,1741,27.3,82.7\nH,10956,999,496,1735,27.3,82.7\nH,10976,1007,489,1738,27.3,82.6\nH,10996,993,486,1728,27.3,82.5\nH,11016,986,511,1733,27.3,82.5\nH,11036,997,500,1721,27.3,82.5\nH,11056,1007,496,1734,27.3,82.5\nH,11076,1006,480,1739,27.3,82.6\nH,11096,993,505,1743,27.4,82.5\nH,11116,1008,496,1745,27.3,82.5\nH,11136,1006,485,1744,27.4,82.6\nH,11156,1011,501,1739,27.3,82.5\nH,11176,1008,494,1732,27.3,82.5\nH,11196,1008,482,1743,27.3,82.5\nH,11217,1005,499,1733,27.4,82.5\nH,11237,998,483,1741,27.4,82.5\nH,11257,1007,487,1755,27.4,82.4\nH,11277,1009,498,1747,27.4,82.5\nH,11297,1008,508,1744,27.4,82.6\nH,11317,1009,496,1746,27.3,82.7\nH,11337,1008,507,1742,27.4,82.7\nH,11357,999,500,1745,27.4,82.7\nH,11377,1008,501,1758,27.4,82.7\nH,11397,1007,494,1744,27.3,82.8\nH,11417,1006,508,1753,27.4,82.6\nH,11437,1011,485,1747,27.4,82.6\nH,11457,1010,502,1758,27.4,82.6\nH,11477,1008,493,1761,27.4,82.6\nH,11497,1005,492,1742,27.4,82.5\nH,11517,996,496,1744,27.4,82.5\nH,11538,1004,511,1761,27.4,82.3\nH,11558,1023,490,1759,27.4,82.4\nH,11578,992,510,1753,27.4,82.3\nH,11598,999,501,1744,27.4,82.4\nH,11618,1022,496,1746,27.4,82.4\nH,11638,1006,496,1754,27.4,82.5\nH,11658,1008,490,1755,27.4,82.6\nH,11678,1003,506,1755,27.4,82.8\nH,11698,995,506,1746,27.4,82.6\nH,11718,1007,496,1759,27.4,82.6\nH,11738,1014,494,1758,27.3,82.5\nH,11758,1014,528,1758,27.4,82.7\nH,11778,1014,496,1761,27.4,82.8\nH,11798,1009,498,1757,27.4,82.9\nH,11818,1008,505,1749,27.4,82.8\nH,11838,1014,505,1758,27.4,82.8\nH,11858,1008,502,1757,27.4,82.4\nH,11879,1019,496,1758,27.4,82.1\nH,11899,1010,502,1762,27.4,82.4\nH,11919,1023,496,1767,27.4,82.6\nH,11939,1018,511,1758,27.4,82.6\nH,11959,1018,495,1744,27.4,82.7\nH,11979,1023,499,1759,27.4,82.8\nH,11999,1010,496,1767,27.4,82.8\nH,12019,1009,506,1760,27.4,82.8\nH,12039,1040,511,1764,27.4,82.7\nH,12059,1038,496,1773,27.4,82.7\nH,12079,1029,522,1776,27.4,83.0\nH,12099,1005,510,1761,27.4,83.1\nH,12119,1019,494,1767,27.4,83.1\nH,12139,1022,509,1771,27.4,82.9\nH,12159,1010,511,1759,27.4,83.0\nH,12179,1021,505,1762,27.4,82.7\nH,12200,1007,500,1776,27.4,82.7\nH,12220,1022,497,1763,27.4,82.8\nH,12240,1037,509,1755,27.4,82.7\nH,12260,1009,491,1774,27.4,82.6\nH,12280,1003,501,1761,27.4,82.8\nH,12300,1015,507,1781,27.4,82.7\nH,12320,1015,529,1770,27.4,82.7\nH,12340,1023,499,1757,27.4,82.7\nH,12360,1008,497,1769,27.4,82.7\nH,12380,1023,499,1769,27.4,82.7\nH,12400,1037,511,1760,27.4,82.7\nH,12420,1040,511,1753,27.4,82.8\nH,12440,1019,496,1757,27.4,83.0\nH,12460,1038,496,1767,27.4,83.2\nH,12480,1019,511,1762,27.5,83.5\nH,12500,1022,505,1751,27.4,83.6\nH,12520,1023,531,1761,27.4,83.4\nH,12541,1015,510,1776,27.5,83.2\nH,12561,1017,527,1772,27.5,83.1\nH,12581,1014,510,1759,27.5,83.3\nH,12601,1014,535,1777,27.5,83.4\nH,12621,1012,511,1779,27.5,83.5\nH,12641,1008,529,1773,27.5,83.8\nH,12661,1013,525,1776,27.5,83.8\nH,12681,1015,522,1778,27.5,83.8\nH,12701,1023,532,1778,27.5,83.8\nH,12721,1031,525,1781,27.5,83.9\nH,12741,1019,533,1777,27.5,83.9\nH,12761,1018,506,1789,27.5,83.9\nH,12781,1020,511,1787,27.5,84.0\nH,12801,1019,511,1780,27.5,83.9\nH,12821,1009,525,1767,27.5,83.9\nH,12841,1011,525,1779,27.6,84.0\nH,12861,1036,511,1780,27.6,83.7\nH,12882,1043,528,1792,27.6,83.5\nH,12902,1023,522,1780,27.6,83.6\nH,12922,1035,511,1793,27.6,83.6\nH,12942,1040,526,1783,27.6,83.7\nH,12962,1008,528,1786,27.6,83.8\nH,12982,1031,534,1790,27.6,83.9\nH,13002,1021,541,1781,27.6,83.8\nH,13022,1023,533,1783,27.6,83.9\nH,13042,1015,530,1795,27.6,83.9\nH,13062,1033,536,1780,27.6,83.9\nH,13082,1034,523,1771,27.7,83.8\nH,13102,1023,528,1781,27.7,83.9\nH,13122,1019,534,1783,27.7,83.9\nH,13142,1020,535,1796,27.6,84.0\nH,13162,1042,535,1783,27.7,83.9\nH,13182,1023,534,1777,27.7,84.0\nH,13202,1015,538,1793,27.7,84.1\nH,13223,1019,534,1777,27.7,84.0\nH,13243,1043,530,1794,27.7,83.9\nH,13263,1039,539,1782,27.7,83.9\nH,13283,1023,539,1793,27.7,83.9\nH,13303,1040,526,1798,27.7,83.6\nH,13323,1023,529,1798,27.7,83.3\nH,13343,1047,527,1798,27.7,83.2\nH,13363,1015,529,1798,27.7,83.4\nH,13383,1037,539,1791,27.7,83.6\nH,13403,1023,533,1799,27.8,83.6\nH,13423,1040,533,1790,27.8,83.5\nH,13443,1043,528,1795,27.8,83.5\nH,13463,1047,545,1792,27.7,83.4\nH,13483,1019,511,1808,27.8,83.4\nH,13503,1037,530,1786,27.8,83.7\nH,13523,1039,534,1804,27.8,83.7\nH,13544,1043,539,1801,27.8,83.7\nH,13564,1039,531,1797,27.8,83.6\nH,13584,1034,531,1792,27.8,83.6\nH,13604,1031,536,1803,27.8,83.7\nH,13624,1040,537,1799,27.8,83.3\nH,13644,1035,543,1807,27.8,83.3\nH,13664,1023,540,1790,27.8,83.4\nH,13684,1037,527,1795,27.8,83.4\nH,13704,1040,528,1792,27.8,83.6\nH,13724,1034,542,1803,27.8,83.7\nH,13744,1023,541,1799,27.8,83.8\nH,13764,1037,550,1807,27.8,83.7\nH,13784,1039,547,1797,27.8,83.7\nH,13804,1040,536,1799,27.8,83.5\nH,13824,1036,538,1808,27.8,83.4\nH,13844,1051,560,1803,27.8,83.2\nH,13864,1041,533,1821,27.8,83.1\nH,13885,1039,539,1797,27.8,83.1\nH,13905,1037,533,1808,27.8,83.2\nH,13925,1043,532,1807,27.8,83.3\nH,13945,1039,547,1793,27.8,83.3\nH,13965,1053,537,1808,27.8,83.4\nH,13985,1053,546,1812,27.8,83.4\nH,14005,1049,538,1805,27.8,83.5\nH,14025,1038,531,1808,27.8,83.5\nH,14045,1038,539,1803,27.9,83.5\nH,14065,1054,545,1807,27.9,83.8\nH,14085,1050,546,1820,27.8,83.8\nH,14105,1045,534,1809,27.8,83.7\nH,14125,1051,545,1817,27.9,83.5\nH,14145,1050,546,1807,27.9,83.4\nH,14165,1054,542,1813,27.9,83.4\nH,14185,1061,530,1812,27.9,83.5\nH,14206,1052,539,1811,27.9,83.7\nH,14226,1043,540,1825,27.9,83.8\nH,14246,1053,535,1815,27.9,83.8\nH,14266,1040,567,1809,27.8,83.8\nH,14286,1055,551,1826,27.8,83.9\nH,14306,1044,544,1819,27.9,83.9\nH,14326,1041,545,1815,27.9,83.9\nH,14346,1047,531,1818,27.8,84.0\nH,14366,1037,542,1811,27.9,84.1\nH,14386,1050,535,1819,27.9,84.0\nH,14406,1055,533,1815,27.9,84.1\nH,14426,1053,542,1818,27.9,84.1\nH,14446,1042,544,1833,27.9,84.0\nH,14466,1054,554,1815,27.9,84.1\nH,14486,1065,552,1815,27.9,84.0\nH,14506,1046,557,1839,27.9,84.2\nH,14526,1057,550,1829,27.9,84.1\nH,14547,1043,546,1835,27.9,83.7\nH,14567,1043,547,1825,27.9,83.1\nH,14587,1054,555,1815,27.9,82.4\nH,14607,1055,529,1819,27.8,82.3\nH,14627,1056,560,1829,27.8,82.3\nH,14647,1046,559,1817,27.9,82.2\nH,14667,1049,563,1840,27.9,82.2\nH,14687,1062,538,1839,27.9,82.2\nH,14707,1057,547,1815,27.8,82.2\nH,14727,1061,551,1823,27.8,82.2\nH,14747,1058,547,1830,27.8,82.4\nH,14767,1062,560,1837,27.8,82.4\nH,14787,1046,560,1840,27.8,82.4\nH,14807,1057,566,1840,27.8,82.4\nH,14827,1053,560,1837,27.8,82.5\nH,14847,1072,558,1840,27.8,82.3\nH,14867,1043,549,1834,27.8,82.4\nH,14888,1072,541,1835,27.8,82.4\nH,14908,1061,551,1833,27.7,82.4\nH,14928,1057,563,1843,27.8,82.4\nH,14948,1063,559,1839,27.7,82.4\nH,14968,1057,565,1838,27.7,82.3\nH,14988,1062,565,1837,27.7,82.4\nH,15008,1072,560,1841,27.7,82.4\nH,15028,1083,546,1845,27.7,82.7\nH,15048,1067,547,1831,27.7,82.6\nH,15068,1061,549,1849,27.7,82.6\nH,15088,1055,545,1850,27.7,82.5\nH,15108,1072,548,1839,27.7,82.4\nH,15128,1066,562,1845,27.7,82.4\nH,15148,1061,554,1837,27.6,82.6\nH,15168,1061,560,1834,27.6,82.5\nH,15188,1051,560,1841,27.6,82.5\nH,15208,1058,558,1846,27.6,82.6\nH,15229,1073,551,1835,27.6,82.6\nH,15249,1053,562,1856,27.6,82.6\nH,15269,1070,566,1850,27.6,82.5\nH,15289,1072,556,1840,27.6,82.5\nH,15309,1057,570,1845,27.6,82.6\nH,15329,1063,566,1854,27.6,82.7\nH,15349,1071,561,1857,27.6,82.7\nH,15369,1073,558,1860,27.5,82.6\nH,15389,1069,546,1835,27.5,82.7\nH,15409,1066,553,1851,27.5,82.5\nH,15429,1072,555,1853,27.5,82.7\nH,15449,1079,574,1853,27.5,82.7\nH,15469,1071,557,1861,27.5,82.7\nH,15489,1058,557,1853,27.5,82.8\nH,15509,1072,560,1856,27.5,82.7\nH,15529,1074,569,1872,27.5,82.8\nH,15550,1072,576,1855,27.5,82.6\nH,15570,1072,557,1847,27.5,82.8\nH,15590,1071,555,1863,27.5,82.7\nH,15610,1064,570,1845,27.4,82.7\nH,15630,1072,580,1849,27.5,82.8\nH,15650,1072,560,1859,27.5,82.8\nH,15670,1073,567,1852,27.4,82.7\nH,15690,1072,576,1851,27.4,82.9\nH,15710,1072,557,1858,27.4,82.9\nH,15730,1072,567,1858,27.4,82.8\nH,15750,1066,576,1859,27.4,82.8\nH,15770,1061,576,1854,27.4,82.8\nH,15790,1072,568,1866,27.4,83.0\nH,15810,1074,559,1856,27.4,82.8\nH,15830,1079,566,1858,27.4,82.9\nH,15850,1067,557,1858,27.4,83.0\nH,15870,1071,566,1869,27.4,82.9\nH,15891,1073,580,1863,27.4,83.1\nH,15911,1085,562,1860,27.4,82.9\nH,15931,1075,571,1871,27.4,83.0\nH,15951,1077,555,1867,27.3,83.2\nH,15971,1077,562,1874,27.3,83.2\nH,15991,1087,561,1872,27.4,83.3\nH,16011,1082,560,1872,27.4,83.2\nH,16031,1070,571,1878,27.4,83.1\nH,16051,1086,579,1874,27.3,83.2\nH,16071,1078,563,1869,27.4,83.6\nH,16091,1082,557,1871,27.3,83.9\nH,16111,1086,572,1873,27.4,83.6\nH,16131,1090,565,1862,27.4,83.2\nH,16151,1093,563,1867,27.3,83.2\nH,16171,1082,556,1879,27.4,83.3\nH,16191,1087,582,1873,27.4,83.6\nH,16212,1081,576,1877,27.4,84.0\nH,16232,1087,575,1882,27.4,84.1\nH,16252,1086,576,1873,27.4,84.1\nH,16272,1085,560,1873,27.4,84.0\nH,16292,1086,567,1877,27.4,83.8\nH,16312,1101,564,1881,27.5,83.7\nH,16332,1085,561,1862,27.5,83.3\nH,16352,1092,583,1888,27.4,82.9\nH,16372,1088,579,1883,27.5,83.0\nH,16392,1086,576,1897,27.5,83.2\nH,16412,1095,579,1890,27.5,83.1\nH,16432,1098,587,1893,27.5,83.0\nH,16452,1082,575,1890,27.5,82.9\nH,16472,1091,576,1879,27.5,82.9\nH,16492,1095,571,1898,27.5,82.7\nH,16512,1093,579,1889,27.6,82.6\nH,16532,1088,577,1895,27.5,82.8\nH,16553,1095,578,1891,27.6,82.8\nH,16573,1092,576,1874,27.6,82.8\nH,16593,1104,567,1888,27.6,82.8\nH,16613,1095,579,1897,27.6,82.9\nH,16633,1086,570,1907,27.6,82.9\nH,16653,1094,577,1891,27.6,82.9\nH,16673,1089,592,1893,27.6,83.1\nH,16693,1097,577,1904,27.6,83.0\nH,16713,1083,577,1899,27.6,83.1\nH,16733,1094,596,1904,27.6,83.2\nH,16753,1093,575,1902,27.6,83.2\nH,16773,1085,566,1907,27.6,83.1\nH,16793,1099,577,1905,27.6,83.1\nH,16813,1104,576,1911,27.6,83.0\nH,16833,1109,575,1903,27.6,83.0\nH,16853,1103,585,1898,27.6,83.0\nH,16873,1087,583,1906,27.6,83.1\nH,16894,1090,595,1904,27.6,83.1\nH,16914,1085,587,1906,27.6,83.2\nH,16934,1102,592,1919,27.6,83.2\nH,16954,1107,589,1923,27.6,83.3\nH,16974,1099,598,1916,27.6,83.4\nH,16994,1109,578,1917,27.6,83.2\nH,17014,1072,586,1927,27.6,83.1\nH,17034,1093,596,1906,27.6,82.8\nH,17054,1094,593,1924,27.6,82.9\nH,17074,1099,598,1916,27.6,82.9\nH,17094,1117,589,1920,27.6,82.8\nH,17114,1104,585,1914,27.6,82.8\nH,17134,1099,583,1914,27.6,82.7\nH,17154,1123,592,1907,27.6,82.7\nH,17174,1115,583,1935,27.6,82.8\nH,17194,1103,591,1923,27.6,82.9\nH,17214,1104,589,1933,27.6,83.0\nH,17235,1105,573,1923,27.6,83.0\nH,17255,1109,590,1921,27.6,83.2\nH,17275,1127,582,1936,27.6,83.3\nH,17295,1106,583,1936,27.6,83.3\nH,17315,1104,605,1923,27.6,83.2\nH,17335,1111,593,1923,27.6,83.2\nH,17355,1104,591,1929,27.6,82.9\nH,17375,1111,578,1927,27.6,82.5\nH,17395,1104,603,1936,27.6,82.5\nH,17415,1119,594,1929,27.6,82.8\nH,17435,1114,587,1936,27.6,82.7\nH,17455,1122,581,1927,27.6,82.7\nH,17475,1109,590,1927,27.6,82.9\nH,17495,1121,577,1925,27.6,82.7\nH,17515,1109,586,1940,27.6,82.7\nH,17535,1107,596,1938,27.6,82.7\nH,17556,1108,603,1936,27.6,82.8\nH,17576,1126,589,1938,27.6,82.7\nH,17596,1113,595,1935,27.6,82.7\nH,17616,1125,611,1938,27.6,82.8\nH,17636,1118,591,1936,27.6,82.6\nH,17656,1111,596,1936,27.6,82.7\nH,17676,1111,592,1953,27.6,82.5\nH,17696,1132,599,1955,27.6,82.6\nH,17716,1110,613,1946,27.6,82.5\nH,17736,1131,595,1952,27.6,82.7\nH,17756,1111,607,1945,27.6,82.9\nH,17776,1111,607,1946,27.6,82.9\nH,17796,1130,595,1953,27.6,83.1\nH,17816,1110,607,1947,27.6,82.9\nH,17836,1136,594,1954,27.6,82.7\nH,17856,1117,614,1968,27.6,82.6\nH,17876,1120,595,1958,27.5,82.7\nH,17897,1131,607,1946,27.6,82.8\nH,17917,1116,611,1962,27.6,82.7\nH,17937,1119,603,1957,27.6,82.8\nH,17957,1123,605,1950,27.6,82.6\nH,17977,1138,590,1965,27.6,82.7\nH,17997,1133,607,1968,27.6,82.8\nH,18017,1121,624,1954,27.6,82.9\nH,18037,1134,606,1965,27.5,82.8\nH,18057,1136,608,1967,27.5,82.9\nH,18077,1136,621,1959,27.5,83.0\nH,18097,1136,609,1968,27.5,83.2\nH,18117,1123,610,1970,27.5,82.9\nH,18137,1114,610,1978,27.5,82.7\nH,18157,1133,618,1971,27.5,82.6\nH,18177,1125,621,1970,27.5,82.7\nH,18197,1133,606,1969,27.5,82.6\nH,18218,1136,621,1970,27.5,82.5\nH,18238,1134,613,1968,27.5,82.5\nH,18258,1135,624,1968,27.5,82.6\nH,18278,1143,611,1981,27.5,82.6\nH,18298,1146,624,1979,27.5,82.9\nH,18318,1133,623,1981,27.5,82.9\nH,18338,1138,608,1976,27.5,82.9\nH,18358,1135,614,1975,27.5,82.8\nH,18378,1133,623,1994,27.5,82.7\nH,18398,1146,617,1986,27.5,83.0\nH,18418,1141,606,1977,27.5,82.9\nH,18438,1137,619,1986,27.5,83.0\nH,18458,1148,623,2002,27.5,83.0\nH,18478,1158,608,1988,27.5,83.1\nH,18498,1146,624,1994,27.5,83.0\nH,18518,1137,625,1994,27.5,82.5\nH,18538,1152,633,1990,27.5,82.5\nH,18559,1136,616,2000,27.5,82.6\nH,18579,1146,624,1984,27.5,82.8\nH,18599,1143,613,1992,27.4,83.0\nH,18619,1152,633,2000,27.4,83.0\nH,18639,1161,623,2003,27.4,83.1\nH,18659,1146,634,2007,27.5,83.0\nH,18679,1138,639,2006,27.4,82.9\nH,18699,1146,624,2010,27.4,83.0\nH,18719,1158,628,2002,27.4,83.0\nH,18739,1162,624,2002,27.5,83.2\nH,18759,1157,628,2010,27.4,83.1\nH,18779,1152,622,2002,27.5,83.2\nH,18799,1151,626,2015,27.5,83.3\nH,18819,1152,624,2017,27.4,83.1\nH,18839,1152,635,2005,27.4,83.1\nH,18859,1159,627,2000,27.4,83.1\nH,18879,1155,623,2010,27.4,83.0\nH,18900,1169,630,2019,27.5,83.1\nH,18920,1149,629,2008,27.4,82.9\nH,18940,1159,631,2003,27.4,83.0\nH,18960,1157,634,2011,27.4,83.0\nH,18980,1154,626,2000,27.4,83.1\nH,19000,1181,630,2016,27.5,83.1\nH,19020,1159,622,2029,27.5,83.0\nH,19040,1154,644,2032,27.4,82.9\nH,19060,1168,635,2031,27.4,83.1\nH,19080,1167,629,2029,27.4,83.0\nH,19100,1159,630,2038,27.4,82.8\nH,19120,1168,640,2016,27.4,82.8\nH,19140,1154,644,2034,27.4,82.8\nH,19160,1165,645,2037,27.4,82.9\nH,19180,1170,647,2021,27.5,82.9\nH,19200,1175,631,2032,27.4,83.1\nH,19220,1165,644,2043,27.4,83.1\nH,19241,1173,640,2012,27.4,83.1\nH,19261,1168,640,2032,27.4,83.0\nH,19281,1168,640,2041,27.5,82.9\nH,19301,1161,631,2034,27.4,83.1\nH,19321,1177,644,2043,27.4,83.0\nH,19341,1170,654,2035,27.4,83.1\nH,19361,1180,638,2045,27.4,83.0\nH,19381,1179,635,2032,27.4,82.9\nH,19401,1181,656,2039,27.4,82.9\nH,19421,1175,645,2054,27.4,83.1\nH,19441,1184,642,2047,27.4,82.9\nH,19461,1169,651,2043,27.4,83.0\nH,19481,1175,650,2057,27.4,83.2\nH,19501,1181,642,2057,27.4,83.3\nH,19521,1187,635,2062,27.4,83.3\nH,19541,1169,651,2061,27.4,83.4\nH,19562,1170,655,2067,27.4,83.3\nH,19582,1167,644,2070,27.4,83.3\nH,19602,1186,648,2057,27.4,83.2\nH,19622,1200,653,2070,27.4,83.2\nH,19642,1173,656,2069,27.4,83.1\nH,19662,1179,655,2081,27.4,83.1\nH,19682,1198,650,2078,27.4,83.2\nH,19702,1201,653,2065,27.4,83.4\nH,19722,1190,651,2069,27.4,83.5\nH,19742,1198,659,2067,27.4,83.4\nH,19762,1199,667,2078,27.4,83.5\nH,19782,1184,645,2087,27.4,83.5\nH,19802,1193,656,2077,27.4,83.5\nH,19822,1195,651,2085,27.4,83.2\nH,19842,1181,663,2087,27.4,83.3\nH,19862,1186,656,2089,27.4,83.5\nH,19882,1187,656,2096,27.4,83.3\nH,19903,1205,659,2093,27.4,83.3\nH,19923,1211,667,2096,27.4,83.5\nH,19943,1207,668,2084,27.4,83.7\nH,19963,1202,671,2095,27.4,84.0\nH,19983,1206,656,2093,27.4,84.3\nH,20003,1197,656,2090,27.4,84.3\nH,20023,1200,678,2103,27.4,84.5\nH,20043,1200,678,2118,27.4,84.5\nH,20063,1218,662,2111,27.4,84.5\nH,20083,1200,685,2109,27.4,84.6\nH,20103,1217,660,2101,27.4,84.7\nH,20123,1213,682,2106,27.4,84.7\nH,20143,1200,669,2107,27.4,84.8\nH,20163,1214,663,2117,27.4,84.8\nH,20183,1211,667,2112,27.4,84.7\nH,20203,1212,673,2114,27.4,84.8\nH,20224,1200,658,2126,27.3,85.0\nH,20244,1222,675,2122,27.3,85.0\nH,20264,1210,677,2118,27.3,85.1\nH,20284,1208,673,2119,27.2,85.3\nH,20304,1200,669,2128,27.2,85.3\nH,20324,1214,672,2127,27.2,85.4\nH,20344,1209,675,2126,27.2,85.6\nH,20364,1217,677,2130,27.2,85.6\nH,20384,1221,676,2119,27.2,85.8\nH,20404,1207,688,2128,27.2,85.9\nH,20424,1232,672,2134,27.2,86.0\nH,20444,1227,672,2122,27.1,86.0\nH,20464,1232,675,2128,27.1,86.0\nH,20484,1226,680,2153,27.1,86.0\nH,20504,1234,669,2129,27.1,85.9\nH,20524,1231,678,2128,27.1,85.9\nH,20544,1221,689,2149,27.1,86.0\nH,20565,1239,679,2141,27.0,86.1\nH,20585,1235,688,2128,27.0,86.2\nH,20605,1230,695,2162,27.0,86.3\nH,20625,1232,674,2139,27.0,86.4\nH,20645,1232,679,2149,27.0,86.5\nH,20665,1226,694,2153,27.0,86.5\nH,20685,1233,662,2149,26.9,86.7\nH,20705,1241,688,2154,26.9,86.8\nH,20725,1236,699,2158,26.9,86.8\nH,20745,1232,695,2152,26.9,86.9\nH,20765,1232,698,2162,26.9,87.0\nH,20785,1235,698,2155,26.9,87.0\nH,20805,1235,713,2160,26.9,87.1\nH,20825,1255,692,2162,26.9,87.1\nH,20845,1250,718,2164,26.9,87.0\nH,20865,1240,693,2165,26.9,87.0\nH,20885,1239,682,2157,26.9,86.9\nH,20906,1238,698,2167,26.9,87.0\nH,20926,1236,688,2169,26.9,87.0\nH,20946,1248,703,2157,26.9,87.1\nH,20966,1253,709,2163,26.8,87.1\nH,20986,1238,703,2167,26.8,87.3\nH,21006,1259,703,2169,26.8,87.3\nH,21026,1232,719,2173,26.8,87.4\nH,21046,1245,709,2171,26.8,87.5\nH,21066,1242,711,2167,26.8,87.5\nH,21086,1255,695,2182,26.8,87.7\nH,21106,1257,706,2185,26.8,87.7\nH,21126,1261,701,2186,26.8,87.7\nH,21146,1264,713,2171,26.7,87.8\nH,21166,1255,702,2187,26.8,87.8\nH,21186,1242,717,2186,26.8,87.7\nH,21206,1259,693,2191,26.8,87.7\nH,21226,1260,709,2187,26.7,87.6\nH,21247,1263,719,2185,26.7,87.8\nH,21267,1249,706,2183,26.7,87.8\nH,21287,1255,705,2194,26.7,87.8\nH,21307,1264,717,2177,26.7,87.8\nH,21327,1264,695,2187,26.7,87.9\nH,21347,1275,708,2208,26.7,87.9\nH,21367,1265,702,2192,26.7,88.0\nH,21387,1266,708,2197,26.7,88.0\nH,21407,1255,723,2209,26.7,88.1\nH,21427,1261,713,2210,26.7,88.2\nH,21447,1269,713,2207,26.7,88.2\nH,21467,1264,710,2203,26.7,88.2\nH,21487,1274,707,2210,26.7,88.2\nH,21507,1264,720,2221,26.7,88.2\nH,21527,1279,717,2203,26.7,88.1\nH,21547,1267,708,2221,26.7,88.1\nH,21568,1273,731,2210,26.7,88.1\nH,21588,1269,709,2206,26.6,88.1\nH,21608,1258,713,2212,26.6,88.1\nH,21628,1280,720,2213,26.6,88.2\nH,21648,1280,717,2215,26.6,88.3\nH,21668,1270,731,2224,26.6,88.3\nH,21688,1266,725,2224,26.6,88.4\nH,21708,1277,725,2218,26.6,88.4\nH,21728,1279,720,2211,26.6,88.5\nH,21748,1277,726,2217,26.6,88.5\nH,21768,1281,730,2224,26.6,88.5\nH,21788,1285,719,2224,26.6,88.5\nH,21808,1287,719,2240,26.6,88.5\nH,21828,1278,719,2226,26.6,88.6\nH,21848,1289,737,2230,26.7,88.6\nH,21868,1295,725,2230,26.7,88.5\nH,21888,1293,728,2240,26.7,88.5\nH,21909,1280,714,2231,26.6,88.3\nH,21929,1289,726,2243,26.7,88.3\nH,21949,1296,734,2240,26.6,88.3\nH,21969,1275,720,2248,26.6,88.3\nH,21989,1278,721,2240,26.6,88.4\nH,22009,1299,723,2235,26.6,88.4\nH,22029,1291,710,2245,26.6,88.4\nH,22049,1286,729,2252,26.6,88.5\nH,22069,1283,720,2242,26.6,88.5\nH,22089,1303,734,2245,26.6,88.6\nH,22109,1296,720,2243,26.6,88.6\nH,22129,1310,732,2249,26.6,88.5\nH,22149,1291,733,2254,26.7,88.4\nH,22169,1307,734,2256,26.7,88.5\nH,22189,1296,736,2257,26.7,88.5\nH,22209,1300,735,2260,26.7,88.5\nH,22230,1297,735,2253,26.7,88.4\nH,22250,1284,754,2269,26.8,88.4\nH,22270,1296,752,2261,26.8,88.4\nH,22290,1303,741,2279,26.8,88.3\nH,22310,1311,742,2254,26.8,88.2\nH,22330,1310,747,2267,26.9,88.1\nH,22350,1291,739,2283,26.9,88.1\nH,22370,1309,743,2276,26.9,88.2\nH,22390,1323,741,2283,26.9,88.2\nH,22410,1302,737,2273,26.9,88.1\nH,22430,1312,733,2287,27.0,88.0\nH,22450,1305,745,2289,27.0,87.8\nH,22470,1301,763,2282,27.0,87.7\nH,22490,1302,742,2288,27.0,87.7\nH,22510,1306,751,2277,27.0,87.7\nH,22530,1309,759,2286,27.1,87.7\nH,22550,1326,763,2301,27.1,87.7\nH,22571,1317,741,2282,27.1,87.7\nH,22591,1327,752,2299,27.1,87.6\nH,22611,1306,745,2298,27.1,87.6\nH,22631,1312,754,2293,27.2,87.5\nH,22651,1305,759,2291,27.2,87.4\nH,22671,1331,753,2307,27.2,87.4\nH,22691,1321,752,2294,27.2,87.4\nH,22711,1330,747,2311,27.2,87.4\nH,22731,1327,763,2315,27.2,87.3\nH,22751,1328,768,2299,27.3,87.2\nH,22771,1323,762,2317,27.3,87.2\nH,22791,1317,764,2320,27.3,87.1\nH,22811,1318,752,2305,27.3,87.1\nH,22831,1328,763,2318,27.3,87.1\nH,22851,1342,756,2315,27.4,87.0\nH,22871,1329,765,2318,27.4,86.9\nH,22891,1317,773,2323,27.4,86.9\nH,22912,1334,765,2307,27.4,86.9\nH,22932,1325,775,2319,27.4,86.9\nH,22952,1325,767,2323,27.4,86.7\nH,22972,1333,783,2316,27.4,86.8\nH,22992,1328,770,2321,27.4,86.8\nH,23012,1329,757,2325,27.5,86.7\nH,23032,1346,774,2313,27.5,86.6\nH,23052,1323,780,2345,27.5,86.6\nH,23072,1328,772,2332,27.5,86.5\nH,23092,1328,770,2331,27.5,86.4\nH,23112,1343,781,2342,27.5,86.5\nH,23132,1350,784,2332,27.5,86.5\nH,23152,1344,798,2331,27.6,86.5\nH,23172,1331,777,2326,27.6,86.4\nH,23192,1337,784,2335,27.6,86.4\nH,23212,1344,786,2352,27.6,86.3\nH,23232,1337,779,2338,27.6,86.4\nH,23253,1334,783,2343,27.6,86.3\nH,23273,1343,773,2351,27.6,86.3\nH,23293,1349,784,2355,27.6,86.3\nH,23313,1351,784,2351,27.6,86.2\nH,23333,1347,777,2349,27.6,86.4\nH,23353,1345,775,2365,27.6,86.2\nH,23373,1342,769,2352,27.6,86.3\nH,23393,1360,784,2359,27.7,86.2\nH,23413,1357,790,2366,27.7,86.1\nH,23433,1358,788,2365,27.7,86.1\nH,23453,1355,779,2375,27.7,86.1\nH,23473,1362,793,2352,27.7,86.1\nH,23493,1343,788,2374,27.7,86.0\nH,23513,1365,772,2366,27.7,86.0\nH,23533,1355,786,2359,27.7,86.0\nH,23553,1357,782,2371,27.7,86.0\nH,23574,1367,781,2355,27.7,86.0\nH,23594,1350,805,2369,27.7,86.1\nH,23614,1350,790,2371,27.7,86.0\nH,23634,1353,782,2373,27.8,86.2\nH,23654,1359,786,2368,27.8,86.0\nH,23674,1361,785,2367,27.8,86.0\nH,23694,1356,800,2386,27.8,86.0\nH,23714,1360,790,2366,27.8,86.0\nH,23734,1367,793,2383,27.8,85.9\nH,23754,1360,791,2375,27.8,85.9\nH,23774,1358,791,2379,27.8,86.0\nH,23794,1378,793,2384,27.8,85.9\nH,23814,1360,802,2379,27.8,86.0\nH,23834,1371,811,2379,27.8,85.9\nH,23854,1360,793,2385,27.8,85.9\nH,23874,1373,800,2383,27.8,85.9\nH,23894,1381,799,2395,27.8,85.9\nH,23915,1367,800,2382,27.8,86.0\nH,23935,1368,807,2401,27.8,85.9\nH,23955,1366,800,2388,27.8,86.0\nH,23975,1381,816,2384,27.8,85.9\nH,23995,1379,798,2400,27.8,85.9\nH,24015,1385,805,2405,27.8,85.8\nH,24035,1392,816,2396,27.8,85.8\nH,24055,1376,816,2409,27.8,85.9\nH,24075,1381,805,2394,27.8,85.9\nH,24095,1363,817,2399,27.9,86.0\nH,24115,1382,797,2414,27.8,86.0\nH,24135,1366,809,2394,27.9,86.1\nH,24155,1371,803,2409,27.8,86.1\nH,24175,1375,811,2391,27.8,85.9\nH,24195,1385,805,2399,27.8,85.9\nH,24215,1387,822,2406,27.8,86.0\nH,24236,1390,818,2417,27.8,86.1\nH,24256,1392,811,2416,27.8,86.1\nH,24276,1381,820,2421,27.8,86.0\nH,24296,1392,814,2422,27.8,86.1\nH,24316,1391,803,2417,27.9,86.1\nH,24336,1392,819,2411,27.9,86.1\nH,24356,1393,813,2419,27.8,86.2\nH,24376,1381,810,2417,27.8,86.1\nH,24396,1385,810,2422,27.8,86.1\nH,24416,1294,786,2352,27.9,86.0\nH,24436,1435,863,2512,27.8,86.0\nH,24456,1424,841,2463,27.9,86.0\nH,24476,1415,847,2439,27.9,86.1\nH,24496,1411,832,2435,27.9,86.1\nH,24516,1407,857,2447,27.9,86.0\nH,24536,1424,848,2467,27.9,86.0\nH,24556,1410,861,2455,27.9,86.1\nH,24577,1408,864,2465,27.9,86.1\nH,24597,1409,868,2466,27.9,86.1\nH,24617,1418,863,2462,27.9,86.1\nH,24637,1407,862,2466,27.9,86.1\nH,24657,1424,866,2480,27.9,86.1\nH,24677,1414,867,2471,27.9,86.1\nH,24697,1409,876,2475,27.9,86.0\nH,24717,1413,861,2477,27.9,86.0\nH,24737,1417,860,2481,27.9,85.8\nH,24757,1417,863,2490,27.9,86.0\nH,24777,1410,871,2486,27.9,85.8\nH,24797,1421,866,2471,27.8,85.9\nH,24817,1424,876,2493,27.9,86.0\nH,24837,1419,874,2469,27.8,86.0\nH,24857,1416,865,2483,27.9,86.1\nH,24877,1412,865,2486,27.8,86.1\nH,24897,1428,879,2486,27.9,86.2\nH,24918,1417,865,2485,27.8,86.2\nH,24938,1425,874,2480,27.8,86.2\nH,24958,1429,870,2480,27.8,86.2\nH,24978,1438,865,2480,27.8,86.3\nH,24998,1439,877,2502,27.8,86.3\nH,25018,1439,881,2487,27.8,86.3\nH,25038,1433,883,2493,27.8,86.3\nH,25058,1430,882,2493,27.8,86.3\nH,25078,1424,879,2480,27.8,86.3\nH,25098,1447,875,2506,27.8,86.3\nH,25118,1434,879,2510,27.8,86.3\nH,25138,1431,887,2500,27.8,86.3\nH,25158,1437,874,2496,27.8,86.3\nH,25178,1441,881,2501,27.8,86.3\nH,25198,1433,885,2507,27.9,86.3\nH,25218,1455,880,2495,27.8,86.3\nH,25238,1451,877,2512,27.8,86.3\nH,25259,1449,877,2496,27.8,86.2\nH,25279,1436,892,2506,27.8,86.3\nH,25299,1439,880,2501,27.8,86.2\nH,25319,1438,883,2505,27.8,86.3\nH,25339,1440,889,2494,27.8,86.3\nH,25359,1435,883,2509,27.8,86.3\nH,25379,1453,891,2503,27.8,86.3\nH,25399,1454,878,2511,27.8,86.4\nH,25419,1441,890,2510,27.8,86.4\nH,25439,1453,891,2507,27.8,86.5\nH,25459,1442,886,2526,27.8,86.6\nH,25479,1445,887,2525,27.8,86.5\nH,25499,1447,881,2512,27.8,86.5\nH,25519,1446,883,2512,27.8,86.6\nH,25539,1462,881,2522,27.8,86.5\nH,25559,1457,889,2523,27.8,86.6\nH,25580,1457,895,2517,27.8,86.5\nH,25600,1461,881,2521,27.8,86.7\nH,25620,1455,883,2514,27.8,86.6\nH,25640,1455,880,2518,27.8,86.7\nH,25660,1459,891,2526,27.8,86.6\nH,25680,1456,880,2535,27.8,86.6\nH,25700,1456,893,2526,27.8,86.5\nH,25720,1466,900,2523,27.8,86.5\nH,25740,1463,892,2538,27.8,86.4\nH,25760,1458,891,2538,27.8,86.5\nH,25780,1468,897,2533,27.8,86.5\nH,25800,1469,893,2538,27.8,86.6\nH,25820,1461,893,2525,27.8,86.7\nH,25840,1471,897,2518,27.8,86.6\nH,25860,1474,897,2526,27.8,86.7\nH,25880,1459,895,2530,27.8,86.7\nH,25900,1471,896,2524,27.8,86.7\nH,25921,1467,907,2538,27.8,86.8\nH,25941,1461,894,2525,27.8,86.8\nH,25961,1474,896,2531,27.8,86.7\nH,25981,1468,911,2525,27.8,86.7\nH,26001,1470,912,2535,27.7,86.7\nH,26021,1485,912,2535,27.8,86.8\nH,26041,1469,911,2542,27.8,86.8\nH,26061,1451,906,2544,27.8,86.9\nH,26081,1457,905,2542,27.8,86.8\nH,26101,1456,897,2544,27.8,86.8\nH,26121,1481,897,2551,27.8,86.8\nH,26141,1475,915,2542,27.8,86.8\nH,26161,1459,912,2559,27.8,86.8\nH,26181,1473,911,2544,27.8,86.8\nH,26201,1466,899,2545,27.8,86.8";                         // "기록" 탭의 지난 측정 (같은 데이터를 끝까지 재생한 결과)
+var RUN="003_chicken_72h_demo", SENS=["MQ136","MQ137","MQ135"], TXT=["대기","정상","주의","부패"];
+var S, speed=80, playing=true;
+function reset(){S={i:Math.max(1,DATA.findIndex(function(p){return p[0]>=1800})),food:0,foods:S?S.foods:1,th:S?S.th:[[50,120],[40,100],[30,80]],
+  base:null,ins:-1,autoBase:false,log:[],info:[],prev:-1}}
+reset();
+var QU=4.518731988472623;
+function med(k){var t=DATA[S.i][0],v=[];for(var j=S.i;j>=0&&DATA[j][0]>t-300;j--)v.push(DATA[j][k]);v.sort(function(a,b){return a-b});
+  var n=v.length;return n%2?v[(n-1)/2]:(v[n/2-1]+v[n/2])/2}                    // 최근 5분 중앙값 (펌웨어와 같음)
+function rate(k){return S.base?(med(k+1)/S.base[k]-1)*100:null}             // k: 0=MQ135 1=MQ136 2=MQ137, 응답률 %
+function ix(r){return r===null?null:Math.max(0,Math.min(100,r/(QU-1)))}      // 상대 지수 0~100
+function waiting(){return S.ins>=0&&DATA[S.i][0]<S.ins+300}
+function rateFor(f){return rate(f===0?1:f===1?2:0)}
+var HELD=[-1,-1,-1];
+function lvlFor(f,r){var th=S.th[f],x=ix(r);if(r===null||waiting()){HELD[f]=-1;return -1}
+  var lv=r<th[0]?0:r<th[1]?1:2;if(lv<HELD[f]&&r>=(HELD[f]===2?th[1]:th[0])-3.5)lv=HELD[f];HELD[f]=lv;return lv}   // 펌웨어와 같은 히스테리시스 (3.5%p)
+function pick(){var best=-2,bs=-1e9;for(var f=0;f<3;f++){if(!(S.foods>>f&1))continue;var r=rateFor(f),lv=lvlFor(f,r),sc=r===null?-1e9:r/S.th[f][1];
+  if(lv>best||(lv===best&&sc>bs)){best=lv;bs=sc;S.food=f}}}                   // 펌웨어 pickCause와 같은 규칙
+function sel(){pick();return rateFor(S.food)}
+function lvl(r){return lvlFor(S.food,r)}
+function setBase(){S.base=[med(1),med(2),med(3)];info()}
+function info(){S.info.push("I,"+S.base[1].toFixed(1)+","+S.ins+","+S.base[0].toFixed(1)+","+S.base[2].toFixed(1)+","+S.foods)}
+function tick(){
+  if(!playing||S.i>=DATA.length-1)return;
+  S.i++;var t=DATA[S.i][0];
+  if(!S.base&&!S.autoBase&&t>3540){S.autoBase=true;setBase()}               // 펌웨어와 같은 59분 자동 기준
+  if(S.ins<0&&S.base&&t>=3660){S.ins=t;setBase()}                           // 이 측정의 실제 투입 시점(약 61분). 기준 = 직전 5분 중앙값
+  var r=sel(),lv=lvl(r);if(lv!==S.prev){if(lv>=0)S.log.push("L,"+t+","+TXT[lv+1]+","+r.toFixed(1)+","+S.food+","+ix(r).toFixed(1));S.prev=lv}
+}
+var timer=setInterval(tick,20*1000/speed);
+function setSpeed(v){speed=v;clearInterval(timer);timer=setInterval(tick,20*1000/speed);document.getElementById("demoSpeed").textContent=v}
+function res(body,type){return Promise.resolve(new Response(typeof body=="string"?body:JSON.stringify(body),{status:200,headers:{"Content-Type":type||"application/json"}}))}
+function bad(){return Promise.resolve(new Response("invalid",{status:400}))}
+window.fetch=function(url){
+  var s=String(url),path="/"+s.split("?")[0].split("/").pop(),q=new URLSearchParams(s.split("?")[1]||""),p=DATA[S.i],r=sel(),f=S.food;
+  switch(path){
+    case "/data":return res({run:RUN,t:p[0],a:p[1],b:p[2],c:p[3],tp:p[4],hm:p[5],base:S.base?S.base[1]:0,ins:S.ins,rr:r,ix:ix(r),vd:TXT[lvl(r)+1],qu:QU,bok:true,wait:waiting(),ixs:[ix(rate(0)),ix(rate(1)),ix(rate(2))],
+      warn:S.th[S.food][0],bad:S.th[S.food][1],food:S.food,foods:S.foods,sensor:SENS[S.food],
+      per:[0,1,2].map(function(k){return lvlFor(k,rateFor(k))}),r:[rate(0),rate(1),rate(2)],th:S.th,ssid:"ENose-Sensor",free:812,full:false});
+    case "/runs":return res(["002_chicken_72h_sep",RUN]);
+    case "/run":if(q.get("f")==="002_chicken_72h_sep")return res(PAST,"text/csv");
+      return res(DATA.slice(0,S.i+1).map(function(d){return "H,"+d.join(",")}).concat(S.info,S.log).join("\n"),"text/csv");
+    case "/mark":if(q.get("type")=="base"){setBase()}else if(q.get("type")=="insert"){S.ins=p[0];setBase()}else return bad();return res("ok","text/plain");
+    case "/th":var fd=q.has("food")?+q.get("food"):f,w=+q.get("warn"),b=+q.get("bad");if(!(fd>=0&&fd<=2&&w>0&&b>w))return bad();S.th[fd]=[w,b];return res("ok","text/plain");
+    case "/food":var m=+q.get("m");if(!(m>=1&&m<=7))return bad();S.foods=m;pick();if(S.base)info();return res("ok","text/plain");
+  }
+  return bad();
+};
+document.addEventListener("DOMContentLoaded",function(){
+  var pb=document.getElementById("demoPlay");
+  pb.onclick=function(){playing=!playing;pb.textContent=playing?"일시정지":"재생"};
+  document.getElementById("demoFast").onclick=function(){setSpeed(speed>=640?80:speed*2)};
+  document.getElementById("demoReset").onclick=function(){reset();playing=true;pb.textContent="일시정지";if(window.loadRun)loadRun()};
+  // 실제 기기 화면으로 이동 (https 앱은 기기 데이터를 직접 못 받아서, 기기가 띄우는 화면으로 넘어감)
+  document.getElementById("demoReal").onclick=function(e){
+    if(!confirm("실제 기기 화면으로 이동할게요.\n\n1. 휴대폰 Wi-Fi를 ENose-Sensor에 연결하세요 (비밀번호 enose1234).\n2. '인터넷 연결 없음'이 뜨면 '계속 연결'을 고르세요.\n\n연결했으면 확인을 누르세요."))e.preventDefault()};
+  var dl=document.getElementById("dl");if(dl){dl.removeAttribute("download");dl.onclick=function(e){e.preventDefault()};dl.title="미리보기에서는 CSV를 받을 수 없어요"}
+});
+})();
+</script>
+<script>
+var $=function(i){return document.getElementById(i)},$$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
+var FN=["육류","생선","과일·채소"],FS=["MQ136","MQ137","MQ135"],TXT=["대기","정상","주의","부패"];
+var FNOTE=["황화수소 센서(MQ136)로 판정해요. 냉장 닭가슴살 측정으로 정한 기준이에요.",
+  "암모니아·아민 센서(MQ137)로 판정해요. 아직 생선 측정 데이터가 없어서 문헌을 바탕으로 한 가정값이에요.",
+  "VOC·알코올 센서(MQ135)로 판정해요. 아직 과일·채소 측정 데이터가 없어서 문헌을 바탕으로 한 가정값이에요."];
+var PS=[{n:"MQ135",g:"VOC·알코올",f:2,c:"--s1",t:"과채류형",d:"알코올·VOC 우세"},
+        {n:"MQ136",g:"황화수소",f:0,c:"--s2",t:"육류형",d:"황화수소 우세"},
+        {n:"MQ137",g:"암모니아",f:1,c:"--s3",t:"생선형",d:"아민·암모니아 우세"}];
+var LV={"대기":-1,"정상":0,"주의":1,"부패":2},CLS={"정상":"ok","주의":"wr","부패":"bad"},ICON={"대기":"…","정상":"✓","주의":"!","부패":"✕"};
+var L=null,FOOD=0,FOODS=1,THF=0,liveRun=null,cur=null,prevLv=null,actx=null,touched={},fails=0,view="home",RUNS=[],hist=null;
+var prefs={sound:true,vib:true};
+try{var sp=JSON.parse(localStorage.getItem("enosePrefs")||"{}");if(sp.sound===false)prefs.sound=false;if(sp.vib===false)prefs.vib=false}catch(e){}
+function savePrefs(){try{localStorage.setItem("enosePrefs",JSON.stringify(prefs))}catch(e){}}
+
+function hm(s){s=Math.max(0,Math.round(s));var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+":"+(m<10?"0":"")+m}
+function hmK(s){s=Math.max(0,Math.round(s));var h=Math.floor(s/3600),m=Math.floor(s%3600/60);return (h?h+"시간 ":"")+m+"분"}
+function rrText(r){return (r===null||r===""||r===undefined||isNaN(r))?"–":(r>=0?"+":"")+Math.round(r)+"%"}
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function multi(){return (FOODS&(FOODS-1))!==0}
+function picked(m){m=m||FOODS;return [0,1,2].filter(function(f){return m>>f&1})}
+function pillHTML(t,extra){return '<span class="pill '+(CLS[t]||"wait")+"-t"+(extra||"")+'">'+(ICON[t]||"")+" "+t+"</span>"}
+
+// ----- 알림 -----
+document.addEventListener("click",function(){if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}});
+function beep(n){if(!actx||!prefs.sound)return;for(var i=0;i<n;i++){var o=actx.createOscillator(),g=actx.createGain();o.frequency.value=880;
+  o.connect(g);g.connect(actx.destination);var t=actx.currentTime+i*.35;g.gain.setValueAtTime(.3,t);g.gain.setValueAtTime(0,t+.2);o.start(t);o.stop(t+.22)}}
+function alarm(vd,rr,test){var bx=$("alertBox");bx.style.background=css(vd=="부패"?"--crit":"--warn");bx.style.color=vd=="부패"?"#fff":"#0b0b0b";
+  $("alertMsg").innerHTML=(test?"알림 테스트 · ":"")+ICON[vd]+" "+FN[FOOD]+" 기준으로 판정이 "+vd+"(으)로 바뀌었어요<small>"+FS[FOOD]+" 응답률 "+rrText(rr)+"</small>";
+  $("alert").style.display="block";if(prefs.vib&&navigator.vibrate)navigator.vibrate(vd=="부패"?[400,150,400,150,400]:[300,150,300]);beep(vd=="부패"?3:2)}
+$("alertClose").onclick=function(){$("alert").style.display="none"};
+
+// ----- 화면 전환 (#home / #analysis / #history / #settings) -----
+function route(){var v=(location.hash||"#home").slice(1);if(["home","analysis","history","settings"].indexOf(v)<0)v="home";view=v;
+  $$(".view[id^='v-']").forEach(function(s){s.hidden=s.id!=="v-"+v});
+  $$("nav.tabs a").forEach(function(a){if(a.dataset.v===v)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
+  $("title").textContent={home:"전자코",analysis:"분석",history:"측정 기록",settings:"설정"}[v];
+  if(v==="analysis")drawA();if(v==="history"){hist=null;$("histDetail").hidden=true;loadHistory()}window.scrollTo(0,0)}
+window.addEventListener("hashchange",route);
+
+// ----- 실시간 데이터 -----
+function setSt(on){$("st").className="chip "+(on?"on":"off");$("stTxt").textContent=on?"연결됨":"연결 끊김";$("offline").hidden=on||fails<2}
+function gauge(rr,w,b){var max=Math.max(b*1.6,(isNaN(rr)?0:rr)*1.1,10),tr=$("track").children;
+  tr[0].style.flex=w/max;tr[1].style.flex=(b-w)/max;tr[2].style.flex=(max-b)/max;
+  $("gticks").innerHTML='<span style="left:0;transform:none">0%</span><span style="left:'+(w/max*100)+'%">'+Math.round(w)+'%</span><span style="left:'+(b/max*100)+'%">'+Math.round(b)+'%</span>';
+  var p=$("pin");if(isNaN(rr)){p.hidden=true;return}p.hidden=false;p.style.left=Math.min(100,Math.max(0,rr/max*100))+"%"}
+function poll(){
+  fetch("/data").then(function(r){return r.json()}).then(function(d){
+    L=d;fails=0;setSt(true);
+    if(d.food!==undefined)FOOD=d.food;
+    if(d.foods!==undefined&&d.foods!==FOODS){FOODS=d.foods;showFood()}
+    $("sid").textContent=d.run;$("clock").textContent=hmK(d.t)+" 측정";
+    // 홈
+    var rr=d.rr===null?NaN:d.rr;
+    $("vcard").className="card verdict "+(CLS[d.vd]||"");$("vd").textContent=d.vd;$("vic").textContent=ICON[d.vd]||"…";
+    $("vlabel").textContent=multi()?"지금 상태 · 대표 "+FN[FOOD]:"지금 상태 · "+FN[FOOD];
+    $("rr").textContent=d.wait?"–":rrText(d.rr);$("rrLbl").textContent=FS[FOOD]+" 응답률";gauge(rr,d.warn,d.bad);
+    $("perFood").innerHTML=multi()&&d.base?picked().map(function(f){var t=TXT[((d.per||[])[f]===undefined?-1:d.per[f])+1];
+      return '<span class="pill '+(CLS[t]||"wait")+"-t"+(f===FOOD?" cause":"")+'">'+FN[f]+" "+(ICON[t]||"")+" "+t+"</span>"}).join(""):"";
+    $("vwarn").hidden=!(d.ins>=0&&d.bok===false);$("vwarn").textContent="투입 직전 5분 기준선이 흔들렸어요 (흔들림 10% 이상 또는 앞뒤 차이 5% 이상). 결과를 참고용으로 보세요.";
+    $("vfoot").textContent=d.wait?"시료를 넣고 5분 동안 값을 모으는 중이에요 (약 "+Math.max(1,Math.ceil((d.ins+300-d.t)/60))+"분 남음). 그 뒤부터 판정해요.":
+      d.base?(FS[FOOD]+" 응답률 주의 "+Math.round(d.warn)+"% · 부패 "+Math.round(d.bad)+"% 이상"+(FOOD?" · 데모 기준":"")+(d.ins<0?" · 투입 전 임시 기준":" · 기준값 = 투입 직전 5분")):
+      "기준값을 잡는 중이에요. 빈 용기로 59분이 지나면 자동으로 설정돼요"+(d.t<3540?" (약 "+Math.ceil((3540-d.t)/60)+"분 남음)":"")+".";
+    $("el").textContent=d.ins<0?"–":hm(d.t-d.ins);$("tp").textContent=d.tp.toFixed(1)+"℃";$("hm").textContent=d.hm.toFixed(0)+"%";
+    $("startSub").textContent=!d.base?"지금: 빈 용기 기준값 측정 중":d.ins<0?"지금: 시료를 넣을 차례예요":"지금: 측정 중 ("+hm(d.t-d.ins)+" 경과)";
+    $("dotHome").style.display=LV[d.vd]>=1?"block":"none";
+    // 분석
+    $("v1").innerHTML=d.a+"<small>ADC</small>";$("v2").innerHTML=d.b+"<small>ADC</small>";
+    $("v3").innerHTML=d.c>=4095?'<span class="sat">포화 4095</span>':d.c+"<small>ADC</small>";
+    pattern(d);
+    // 설정
+    var tf=(d.th||[])[THF]||[d.warn,d.bad];
+    if(!touched.w&&document.activeElement!==$("warnIn"))$("warnIn").value=tf[0];
+    if(!touched.b&&document.activeElement!==$("badIn"))$("badIn").value=tf[1];
+    $("iSsid").textContent=d.ssid||"ENose-Sensor";$("offSsid").textContent=d.ssid||"ENose-Sensor";$("iHost").textContent=location.host||"192.168.4.1";
+    $("iRun").textContent=d.run;$("iTime").textContent=hmK(d.t);$("iFree").textContent=d.free!==undefined?d.free+" KB"+(d.full?" (가득 참)":""):"–";
+    // 알림
+    var lv=LV[d.vd];if(prevLv!==null&&lv>=1&&lv>prevLv)alarm(d.vd,d.rr);if(prevLv!==null&&lv!==prevLv)setTimeout(loadCur,300);prevLv=lv;   // 판정이 바뀌면 타임라인도 바로 갱신
+    if(d.run!==liveRun){liveRun=d.run;loadCur();if(view==="history"&&!hist)loadHistory()}
+    if(!$("sheet").hidden)wizard();
+    if(cur)timeline(cur,d.t,"tl","tlIns","tlStart","tlEnd");eta();
+  }).catch(function(){fails++;setSt(false)});
+}
+
+// ----- 기록 파일 읽기 -----
+function parseRun(txt){var o={H:[],INS:-1,BASES:[0,0,0],log:[],foods:1};
+  txt.split("\n").forEach(function(ln){var p=ln.trim().split(",");
+    if(p[0]=="H"&&p.length>=5)o.H.push([+p[1],+p[2],+p[3],+p[4]]);
+    else if(p[0]=="L")o.log.push([+p[1],p[2],p[3]===""?null:+p[3],p[4]===undefined?null:+p[4]]);
+    else if(p[0]=="I"){o.INS=+p[2];var b136=p[1]!==""?+p[1]:0;o.BASES=[p[3]?+p[3]:0,b136,p[4]?+p[4]:0];if(p[5])o.foods=+p[5]}});
+  return o}
+function getRun(id){return fetch("/run?f="+encodeURIComponent(id)).then(function(r){return r.ok?r.text():""}).then(parseRun)}
+function loadCur(){if(!liveRun)return;getRun(liveRun).then(function(o){cur=o;if(L){timeline(cur,L.t,"tl","tlIns","tlStart","tlEnd");eta()}if(view==="analysis")drawA()}).catch(function(){})}
+
+// ----- 상태 타임라인: 판정 기록(L)을 시간 띠로 -----
+function timeline(o,now,id,insId,sId,eId){
+  var el=$(id),g=o.log;if(!g.length){el.innerHTML='<div class="s-1" style="flex:1"></div>';$(sId).textContent="기준값 설정 전";$(eId).textContent=hm(now);$(insId).hidden=true;if(id=="tl")$("tlNow").textContent="";return}
+  var t0=g[0][0],span=Math.max(1,now-t0),html="";
+  g.forEach(function(e,i){var end=i+1<g.length?g[i+1][0]:now;html+='<div class="s'+LV[e[1]]+'" style="flex:'+Math.max(0,end-e[0])/span+'" title="'+e[1]+'"></div>'});
+  el.innerHTML=html;$(sId).textContent="기준 설정 "+hm(t0);$(eId).textContent=(id=="tl"?"지금 ":"끝 ")+hm(now);
+  var m=$(insId);if(o.INS>=t0&&o.INS<=now){m.hidden=false;m.style.left=((o.INS-t0)/span*100)+"%"}else m.hidden=true;
+  if(id=="tl"){var last=g[g.length-1];$("tlNow").textContent=last[1]+" "+hmK(now-last[0])+"째"}}
+
+// ----- 예상 남은 시간: 대표 음식 센서의 최근 30분 응답률 추세(직선)로 다음 기준까지 걸릴 시간을 추정 -----
+var SK=[1,2,0];   // 음식 → 센서 열 (0=MQ135, 1=MQ136, 2=MQ137): 육류 MQ136, 생선 MQ137, 과일·채소 MQ135
+function eta(){
+  var card=$("etaCard");
+  if(!L||!cur||!L.base||L.ins<0||L.rr===null||L.wait){card.hidden=true;return}
+  card.hidden=false;
+  var k=SK[FOOD],b=cur.BASES[k],now=L.t,rr=L.rr,pts=cur.H.filter(function(p){return p[0]>=Math.max(cur.INS,now-1800)});
+  var target=rr<L.warn?L.warn:rr<L.bad?L.bad:null,tname=rr<L.warn?"주의":"부패";
+  if(target===null){$("etaBig").innerHTML="이미 부패 기준을 넘었어요";$("etaSub").textContent=FN[FOOD]+" · "+FS[FOOD]+" 응답률 "+rrText(rr)+" (부패 기준 "+Math.round(L.bad)+"%)";return}
+  if(!b||pts.length<15){$("etaBig").innerHTML="계산 중이에요";$("etaSub").textContent="시료를 넣고 5분 이상 기록이 쌓이면 추세로 계산해요.";return}
+  var n=pts.length,sx=0,sy=0,sxx=0,sxy=0;   // 최소제곱 직선 기울기 (%/시간)
+  pts.forEach(function(p){var x=p[0]/3600,y=(p[k+1]/b-1)*100;sx+=x;sy+=y;sxx+=x*x;sxy+=x*y});
+  var slope=(n*sxy-sx*sy)/(n*sxx-sx*sx),win=pts[n-1][0]-pts[0][0];
+  if(!(slope>1)){$("etaBig").innerHTML="빠른 변화 없음";$("etaSub").textContent="최근 "+hmK(win)+" 동안 "+FS[FOOD]+" 응답률이 거의 오르지 않았어요 ("+(slope>=0?"+":"")+slope.toFixed(1)+"%/시간).";return}
+  var hrs=(target-rr)/slope;
+  $("etaBig").innerHTML=(hrs>24?"24시간 이상 뒤":hrs*60<1?"1분 안에":"약 "+hmK(hrs*3600)+" 뒤")+"<small>"+tname+" 기준 도달</small>";
+  $("etaSub").textContent="최근 "+hmK(win)+"의 상승 속도(+"+slope.toFixed(0)+"%/시간)가 그대로 이어진다고 가정한 추정이에요. "+FN[FOOD]+" "+tname+" 기준은 "+FS[FOOD]+" 응답률 "+Math.round(target)+"%예요."}
+
+// ----- 기록 카드용 미니 그래프 (판정 센서의 응답률, 기준값이 없으면 원값) -----
+function sparkSVG(o){if(o.H.length<2)return "";
+  var k=SK[picked(o.foods)[0]],b=o.BASES[k],v=o.H.map(function(p){return b?(p[k+1]/b-1)*100:p[k+1]}),t0=o.H[0][0],t1=o.H[o.H.length-1][0]||t0+1;
+  var lo=Math.min.apply(null,v),hi=Math.max.apply(null,v);if(hi-lo<1)hi=lo+1;
+  var pts=o.H.map(function(p,j){return ((p[0]-t0)/(t1-t0)*300).toFixed(1)+","+(37-(v[j]-lo)/(hi-lo)*34).toFixed(1)}).join(" ");
+  return '<svg class="spark" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true">'+
+    '<line x1="0" y1="39.5" x2="300" y2="39.5" stroke="var(--grid)" vector-effect="non-scaling-stroke"/>'+
+    '<polygon points="0,40 '+pts+' 300,40" fill="var('+PS[k].c+')" fill-opacity=".12"/>'+
+    '<polyline points="'+pts+'" fill="none" stroke="var('+PS[k].c+')" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>'}
+
+// ----- 그래프 (지금 측정 / 기록 상세 공용) -----
+var CH={A:{cv:"cvA",lg:"lgA",mode:"rr",hover:null},H:{cv:"cvH",lg:"lgH",mode:"rr",hover:null}};
+function series(c,o){if(c.mode=="rr"){if(!o.BASES[1])return [];var out=[];
+    PS.forEach(function(ps,k){var b=o.BASES[k];if(!b)return;out.push({n:ps.n,c:ps.c,u:"%",v:o.H.map(function(p){return (p[k+1]/b-1)*100})})});return out}
+  return PS.map(function(ps,k){return {n:ps.n,c:ps.c,u:"",v:o.H.map(function(p){return p[k+1]})}})}
+function niceTicks(lo,hi,n){var span=hi-lo||1,step=Math.pow(10,Math.floor(Math.log10(span/n))),e=span/n/step;
+  step*=e>=5?10:e>=2?5:e>=1?2:1;var a=Math.floor(lo/step)*step,b=Math.ceil(hi/step)*step,t=[];for(var x=a;x<=b+step/2;x+=step)t.push(+x.toFixed(6));return t}
+function draw(c,o){
+  var cv=$(c.cv);if(!cv||!cv.offsetParent){return}
+  var D2=window.devicePixelRatio||1,W=cv.clientWidth,Hh=220;cv.width=W*D2;cv.height=Hh*D2;
+  var x=cv.getContext("2d");x.setTransform(D2,0,0,D2,0,0);x.clearRect(0,0,W,Hh);
+  var S=o?series(c,o):[],ink2=css("--ink2"),muted=css("--muted"),grid=css("--grid"),axis=css("--axis"),surf=css("--surface");
+  $(c.lg).innerHTML=S.map(function(s){return '<span><i style="background:var('+s.c+')"></i>'+s.n+"</span>"}).join("")+(c.mode=="rr"&&S.length?'<span>기준 대비 변화 (%)</span>':"");
+  x.font="13px "+css("--font");
+  if(!o||o.H.length<2||!S.length){c.G=null;x.fillStyle=ink2;x.fillText(!o||o.H.length<2?"그래프는 기록이 2개 쌓이면 나타나요 (20초 간격)":"응답률은 기준값을 설정한 뒤에 볼 수 있어요",8,Hh/2);return}
+  x.font="11px "+css("--font");
+  var lo=1e9,hi=-1e9;S.forEach(function(s){s.v.forEach(function(v){if(v<lo)lo=v;if(v>hi)hi=v})});
+  if(c.mode=="rr"&&L){hi=Math.max(hi,L.bad*1.1);lo=Math.min(lo,0)}
+  if(hi-lo<10)hi=lo+10;var ty=niceTicks(lo,hi,4);lo=ty[0];hi=ty[ty.length-1];
+  var PL=44,PR=52,PT=10,PB=22,iw=W-PL-PR,ih=Hh-PT-PB,t0=o.H[0][0],t1=o.H[o.H.length-1][0];if(t1<=t0)t1=t0+1;
+  var X=function(t){return PL+(t-t0)/(t1-t0)*iw},Y=function(v){return PT+(1-(v-lo)/(hi-lo))*ih};
+  x.textAlign="right";x.textBaseline="middle";
+  ty.forEach(function(v){var y=Y(v);x.strokeStyle=grid;x.lineWidth=1;x.beginPath();x.moveTo(PL,y+.5);x.lineTo(W-PR,y+.5);x.stroke();x.fillStyle=muted;x.fillText(Math.round(v)+(c.mode=="rr"?"%":""),PL-6,y)});
+  var span=t1-t0,step=[600,1200,1800,3600,7200,14400].filter(function(s){return span/s<=5})[0]||28800;
+  x.textAlign="center";x.textBaseline="top";x.strokeStyle=axis;x.beginPath();x.moveTo(PL,PT+ih+.5);x.lineTo(W-PR,PT+ih+.5);x.stroke();
+  for(var tt=Math.ceil(t0/step)*step;tt<=t1;tt+=step){x.fillStyle=muted;x.fillText(hm(tt),X(tt),PT+ih+6)}
+  if(c.mode=="rr"&&L){[[L.warn,"--warn-ink",FS[FOOD]+" 주의"],[L.bad,"--crit-ink",FS[FOOD]+" 부패"]].forEach(function(r){var y=Y(r[0]);
+    x.strokeStyle=css(r[1]);x.setLineDash([5,4]);x.beginPath();x.moveTo(PL,y);x.lineTo(W-PR,y);x.stroke();x.setLineDash([]);
+    x.fillStyle=css(r[1]);x.textAlign="right";x.textBaseline="bottom";x.fillText(r[2]+" "+Math.round(r[0])+"%",W-PR-2,y-3)})}
+  if(o.INS>=t0&&o.INS<=t1){var ix=X(o.INS);x.strokeStyle=ink2;x.setLineDash([3,3]);x.beginPath();x.moveTo(ix,PT);x.lineTo(ix,PT+ih);x.stroke();
+    x.setLineDash([]);x.fillStyle=ink2;x.textAlign="left";x.textBaseline="top";x.fillText("시료 투입",ix+4,PT)}
+  S.forEach(function(s){x.strokeStyle=css(s.c);x.lineWidth=2;x.lineJoin="round";x.beginPath();
+    s.v.forEach(function(v,j){var px=X(o.H[j][0]),py=Y(v);j?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
+    s.lx=X(o.H[o.H.length-1][0]);s.ly=Y(s.v[s.v.length-1]);x.fillStyle=css(s.c);x.strokeStyle=surf;x.lineWidth=2;x.beginPath();x.arc(s.lx,s.ly,4,0,7);x.fill();x.stroke()});
+  var ls=S.slice().sort(function(a,b){return a.ly-b.ly});for(var k=1;k<ls.length;k++)if(ls[k].ly-ls[k-1].ly<13)ls[k].ly=ls[k-1].ly+13;
+  ls.forEach(function(s){x.fillStyle=ink2;x.textAlign="left";x.textBaseline="middle";x.fillText(s.n,s.lx+7,s.ly)});
+  c.G={X:X,Y:Y,S:S,PT:PT,ih:ih,W:W,o:o};
+  if(c.hover!==null&&o.H[c.hover]){var hx=X(o.H[c.hover][0]);x.strokeStyle=axis;x.lineWidth=1;x.beginPath();x.moveTo(hx,PT);x.lineTo(hx,PT+ih);x.stroke();
+    S.forEach(function(s){x.fillStyle=css(s.c);x.strokeStyle=surf;x.lineWidth=2;x.beginPath();x.arc(hx,Y(s.v[c.hover]),4.5,0,7);x.fill();x.stroke()})}
+}
+function bindChart(key,getO){var c=CH[key],cv=$(c.cv),tip=cv.nextElementSibling;
+  function show(e){var G=c.G;if(!G)return;var r=cv.getBoundingClientRect(),mx=e.clientX-r.left,o=G.o,best=0,bd=1e9;
+    o.H.forEach(function(p,j){var d=Math.abs(G.X(p[0])-mx);if(d<bd){bd=d;best=j}});c.hover=best;draw(c,o);
+    var t=o.H[best][0],rel=o.INS>=0?(t>=o.INS?"투입 후 "+hm(t-o.INS):"투입 전 "+hm(o.INS-t)):"측정 "+hm(t);
+    tip.innerHTML=rel+G.S.map(function(s){var v=s.v[best];return '<br><b style="background:var('+s.c+')"></b>'+s.n+" "+(s.u=="%"?rrText(v):Math.round(v))}).join("");
+    tip.hidden=false;var tx=G.X(t)+12;if(tx+tip.offsetWidth>G.W)tx=G.X(t)-12-tip.offsetWidth;tip.style.left=Math.max(0,tx)+"px"}
+  cv.addEventListener("pointermove",show);cv.addEventListener("pointerdown",show);
+  cv.addEventListener("pointerleave",function(){c.hover=null;tip.hidden=true;draw(c,getO())});
+  $$(".seg button[data-m]",cv.closest(".card")).forEach(function(b){b.onclick=function(){c.mode=b.dataset.m;c.hover=null;
+    $$(".seg button[data-m]",cv.closest(".card")).forEach(function(x){x.setAttribute("aria-pressed",x===b)});draw(c,getO())}})}
+function drawA(){draw(CH.A,cur)}
+bindChart("A",function(){return cur});bindChart("H",function(){return hist&&hist.o});
+
+// ----- 가스 패턴 (데모 규칙) -----
+function pattern(d){
+  var r=d.r||[null,null,null],th=d.th||[[50,120],[40,100],[30,80]],box=$("pbars");
+  if(r[0]===null&&r[1]===null&&r[2]===null){box.innerHTML="";$("ptxt").textContent="기준값을 설정하면 세 센서의 변화를 비교해서 어떤 음식의 부패와 비슷한지 보여줘요.";return}
+  var sc=PS.map(function(ps,k){var v=r[k];return v===null?null:v/th[ps.f][1]}),dom=-1,best=-1e9;
+  sc.forEach(function(v,k){if(v!==null&&v>best){best=v;dom=k}});
+  box.innerHTML=PS.map(function(ps,k){var v=r[k],w=v===null?0:Math.max(0,Math.min(1.5,sc[k]))/1.5*100;
+    return '<div class="prow"><span class="pl">'+ps.n+"<small>"+ps.g+'</small></span><div class="ptrack"><div class="pfill" style="width:'+w+'%;background:var('+ps.c+')"></div>'+
+      '<div class="pmark" style="left:'+(100/1.5)+'%" title="부패 기준"></div></div><span class="pv">'+rrText(v)+"</span></div>"}).join("");
+  var t;if(best<.5)t="뚜렷한 패턴 없음<small>세 센서 모두 각 음식의 부패 기준(빨간 선)의 절반에 못 미쳐요.</small>";
+  else{var ps=PS[dom];t="<b>"+ps.t+"</b>에 가까워요 · "+ps.d+(!(FOODS>>ps.f&1)?"<small>고른 음식("+picked().map(function(f){return FN[f]}).join(", ")+")과 패턴이 달라요. 다른 음식이 상하고 있거나, 습도 영향일 수 있어요.</small>"
+    :"<small>고른 음식 중 "+FN[ps.f]+"과(와) 같은 계열 패턴이에요.</small>")}
+  $("ptxt").innerHTML=t+"<small>데모 규칙이에요. 음식별 측정 데이터로 검증하기 전까지 참고용으로 보세요.</small>"}
+
+// ----- 기록 목록과 상세 -----
+function summary(o){var ins=o.INS,first={},last=o.log.length?o.log[o.log.length-1][1]:"대기",ref=ins>=0?ins:(o.log[0]?o.log[0][0]:0);
+  o.log.forEach(function(e){if(first[e[1]]===undefined&&e[0]>=ref)first[e[1]]=e[0]-ref});
+  return {last:last,dur:o.H.length?o.H[o.H.length-1][0]:0,warnAt:first["주의"],badAt:first["부패"],ref:ins>=0?"투입 후":"기준 설정 후"}}
+function loadHistory(){
+  fetch("/runs").then(function(r){return r.json()}).then(function(ids){RUNS=ids.slice().sort().reverse();
+    var box=$("histList");box.hidden=false;if(!RUNS.length){box.innerHTML='<div class="muted">아직 기록이 없어요.</div>';return}
+    box.innerHTML=RUNS.map(function(id){return '<button type="button" class="run" data-id="'+id+'"><div class="rt"><span>'+id+'</span>'+(id===liveRun?'<span class="live">측정 중</span>':"")+
+      '</div><div class="rm">불러오는 중…</div></button>'}).join("");
+    $$(".run",box).forEach(function(b){b.onclick=function(){openRun(b.dataset.id)}});
+    RUNS.reduce(function(p,id){return p.then(function(){return getRun(id).then(function(o){var s=summary(o),b=box.querySelector('[data-id="'+id+'"]');if(!b)return;
+      b.querySelector(".rm").innerHTML=pillHTML(s.last)+" &nbsp;"+picked(o.foods).map(function(f){return FN[f]}).join("·")+" · 기록 "+hmK(s.dur)+
+        (s.warnAt!==undefined?"<br>"+s.ref+" "+hmK(s.warnAt)+"에 주의":"")+(s.badAt!==undefined?(s.warnAt!==undefined?", ":"<br>"+s.ref+" ")+hmK(s.badAt)+"에 부패":"");
+      var old=b.querySelector(".spark");if(old)old.remove();b.insertAdjacentHTML("beforeend",sparkSVG(o))})})},Promise.resolve());
+  }).catch(function(){$("histList").innerHTML='<div class="muted">기록을 불러오지 못했어요. 연결을 확인하세요.</div>'})}
+function openRun(id){getRun(id).then(function(o){hist={id:id,o:o};$("histList").hidden=true;$("histDetail").hidden=false;$("hTitle").textContent=id;
+  var a=$("hCsv");a.href="/run?f="+encodeURIComponent(id);a.setAttribute("download",id+".csv");
+  var s=summary(o);timeline(o,s.dur,"tlH","tlHIns","tlHStart","tlHEnd");
+  $("hLog").innerHTML=o.log.length?o.log.slice().reverse().map(function(e){return "<li><span>"+hmK(e[0])+" 시점"+(e[3]!==null&&e[3]!==undefined?' <span class="small">· '+FN[e[3]]+"</span>":"")+"</span><span>"+rrText(e[2])+" "+pillHTML(e[1])+"</span></li>"}).join("")
+    :'<li class="muted">판정이 바뀐 적이 없어요.</li>';window.scrollTo(0,0);draw(CH.H,o)})}
+$("hBack").onclick=function(){hist=null;$("histDetail").hidden=true;$("histList").hidden=false};
+
+// ----- 설정: 음식, 기준, 알림 -----
+function showFood(){$$(".foodseg button").forEach(function(b){b.setAttribute("aria-pressed",!!(FOODS>>+b.dataset.f&1))});
+  var note=multi()?"고른 음식("+picked().map(function(f){return FN[f]}).join(", ")+")마다 각자의 센서로 따로 판정하고, 가장 나쁜 결과를 대표로 보여줘요. 공기를 함께 맡기 때문에 어느 음식이 상했는지는 확실하지 않아요.":FNOTE[picked()[0]];
+  $$(".foodnote").forEach(function(e){e.textContent=note});$("foodNote").textContent=note;$("demoChip").hidden=!(FOODS&6)}
+function setFoods(m,noteEl){if(!m){(noteEl||$("foodNote")).textContent="음식은 하나 이상 골라야 해요.";return}
+  var before=FOODS;FOODS=m;showFood();
+  fetch("/food?m="+m).then(function(r){if(!r.ok)throw 0;prevLv=null;poll();setTimeout(loadCur,500)})
+    .catch(function(){FOODS=before;showFood();alert("음식 종류를 바꾸지 못했어요. Wi-Fi 연결을 확인하세요.")})}
+document.addEventListener("click",function(e){var b=e.target.closest(".foodseg button");if(!b)return;setFoods(FOODS^(1<<+b.dataset.f),b.closest(".foodseg").nextElementSibling)});
+function showTh(){$("thFood").value=THF;touched={};
+  $("thMsg").textContent=THF===0?"기본값은 주의 50% · 부패 120%예요. 냉장 닭가슴살 50g 측정에서 정한 값이에요."
+    :"기본값은 "+(THF===1?"주의 40% · 부패 100%":"주의 30% · 부패 80%")+"예요. 측정 데이터가 생기면 여기서 고쳐 주세요.";if(L)poll()}
+$("thFood").onchange=function(){THF=+this.value;showTh()};
+$("warnIn").oninput=function(){touched.w=1};$("badIn").oninput=function(){touched.b=1};
+$("bSave").onclick=function(){var w=parseFloat($("warnIn").value),b=parseFloat($("badIn").value);
+  if(!(w>0)||!(b>w)){$("thMsg").textContent="주의 값은 0보다 크고, 부패 값은 주의 값보다 커야 해요.";return}
+  fetch("/th?food="+THF+"&warn="+w+"&bad="+b).then(function(r){if(!r.ok)throw 0;touched={};$("thMsg").textContent=FN[THF]+" 기준을 저장했어요. 주의 "+w+"% · 부패 "+b+"% 이상";poll()})
+    .catch(function(){$("thMsg").textContent="저장하지 못했어요. Wi-Fi 연결을 확인하세요."})};
+function sw(id,key){var el=$(id);el.setAttribute("aria-checked",prefs[key]);el.onclick=function(){prefs[key]=!prefs[key];el.setAttribute("aria-checked",prefs[key]);savePrefs()}}
+sw("swSound","sound");sw("swVib","vib");
+$("bTest").onclick=function(){alarm("주의",60,true)};
+
+// ----- 기준 설정 / 시료 투입 -----
+function mark(t){return fetch("/mark?type="+t).then(function(r){if(!r.ok)throw 0;poll();setTimeout(loadCur,500)})}
+function mk(t){var n=t=="base"?"기준 설정":"시료 투입";if(!confirm(n+"을(를) 지금 시점으로 기록할까요?"))return;
+  mark(t).catch(function(){alert(n+"을(를) 보내지 못했어요. 휴대폰이 ESP32 Wi-Fi에 연결돼 있는지 확인하세요.")})}
+$("bBase").onclick=function(){mk("base")};$("bIns").onclick=function(){mk("insert")};
+
+// ----- 측정 시작 안내 (단계: 1 음식 → 2 빈 용기 기준값 → 3 시료 투입 → 4 측정 중) -----
+var wStep=1;
+function openSheet(){wStep=1;$("shade").hidden=false;$("sheet").hidden=false;wizard()}
+function closeSheet(){$("shade").hidden=true;$("sheet").hidden=true}
+$("bStart").onclick=openSheet;$("shade").onclick=closeSheet;
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&!$("sheet").hidden)closeSheet()});
+function auto(){if(!L)return 1;return !L.base?2:L.ins<0?3:4}
+function wizard(){
+  if(wStep>1)wStep=Math.max(wStep,auto());
+  $$("#wSteps i").forEach(function(i,k){i.className=k<wStep?"on":""});$("wStepTxt").textContent=wStep+" / 4";
+  var T=$("wTitle"),B=$("wBody"),K=$("wBtns");
+  if(wStep===1){T.textContent="무엇을 측정하나요?";
+    if(!B.querySelector(".foodseg"))B.innerHTML='<div class="card"><div class="seg wide foodseg" role="group" aria-label="음식 종류"><button type="button" data-f="0">육류</button><button type="button" data-f="1">생선</button><button type="button" data-f="2">과일·채소</button></div><div class="fnote foodnote"></div></div>'+
+      '<div class="small">여러 개 고르면 음식마다 따로 판정하고 가장 나쁜 결과를 보여줘요.</div>';
+    showFood();K.innerHTML='<button type="button" class="btn" id="wClose">닫기</button><button type="button" class="btn primary" id="wNext">다음</button>';
+    $("wNext").onclick=function(){wStep=2;B.innerHTML="";wizard()}}
+  else if(wStep===2){T.textContent="빈 용기로 기준값을 재요";var p=L?Math.min(1,L.t/3540):0,left=L?Math.max(0,Math.ceil((3540-L.t)/60)):60;
+    B.innerHTML='<div class="card"><div class="muted">회로를 <b>시료 없이</b> 용기에 넣고 랩으로 밀봉하세요. 센서가 안정되도록 60분 정도 빈 공기를 재요. 실제 기준값은 <b>시료를 넣기 직전 5분</b>의 값으로 잡혀요.</div>'+
+      '<div class="prog" style="margin-top:12px"><div style="width:'+(p*100)+'%"></div></div><div class="row small" style="margin-top:6px"><span>'+(L?hm(L.t):"0:00")+' / 0:59</span><span>약 '+left+'분 남음</span></div></div>'+
+      '<div class="small">시료는 기준값이 잡히기 30분 전쯤 냉장고에서 꺼내 상온에 두세요. 이미 빈 용기로 충분히 쟀다면 지금 바로 기준을 잡을 수 있어요.</div>';
+    K.innerHTML='<button type="button" class="btn" id="wClose">닫기</button><button type="button" class="btn" id="wNow">지금 기준 설정</button>';
+    $("wNow").onclick=function(){if(confirm("지금까지 잰 값으로 기준을 설정할까요?"))mark("base").then(wizard)}}
+  else if(wStep===3){T.textContent="이제 시료를 넣으세요";
+    B.innerHTML='<div class="card"><div class="muted">센서가 안정됐어요. 랩을 펼친 시료를 용기에 넣고 <b>30초 안에</b> 다시 밀봉한 뒤 아래 버튼을 누르세요. 버튼을 누른 순간 <b>직전 5분 값</b>이 기준값이 되고, 5분 뒤부터 판정해요.</div></div>';
+    K.innerHTML='<button type="button" class="btn" id="wClose">닫기</button><button type="button" class="btn primary" id="wIns">시료 넣었어요</button>';
+    $("wIns").onclick=function(){mark("insert").then(wizard).catch(function(){alert("기록하지 못했어요. 연결을 확인하세요.")})}}
+  else{T.textContent="측정 중이에요";
+    B.innerHTML='<div class="card"><div class="row"><span class="muted">투입 후 '+hmK(L.t-L.ins)+'</span>'+pillHTML(L.vd)+'</div><div class="small" style="margin-top:8px">6시간 정도 측정하면 판정이 충분히 쌓여요. 이 화면을 켜 두면 판정이 바뀔 때 알려줘요.</div></div>';
+    K.innerHTML='<button type="button" class="btn" id="wClose">닫기</button><a class="btn primary" href="#home" id="wHome">홈으로</a>';
+    $("wHome").onclick=closeSheet}
+  $("wClose").onclick=closeSheet}
+
+// ----- 시작 -----
+showFood();showTh();route();poll();setInterval(poll,2000);
+setInterval(function(){loadCur();if(view==="history"&&hist&&hist.id===liveRun)openRun(liveRun)},20000);
+window.addEventListener("resize",function(){drawA();if(hist)draw(CH.H,hist.o)});
+</script><script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){})</script>
+</body></html>
