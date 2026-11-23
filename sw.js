@@ -4,7 +4,8 @@ const CACHE = 'enose-2026.11.23';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 const WAIT = 3000;
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+// 같은 github.io 주소의 다른 앱(예: 단백질20g)과 저장소를 같이 쓰므로, 이 앱의 옛 저장본(enose-)만 지움
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('enose-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 const put = (r, res) => { if (res.ok) { const cp = res.clone(); return caches.open(CACHE).then(c => c.put(r, cp)).then(() => res); } return res; };
 self.addEventListener('fetch', e => {
   const r = e.request; if (r.method !== 'GET' || new URL(r.url).origin !== location.origin) return;
