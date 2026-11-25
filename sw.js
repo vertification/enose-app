@@ -1,6 +1,6 @@
-// 전자코사인 데모 앱 서비스워커 — 앱 버전 2026.11.23
+// 전자코사인 데모 앱 서비스워커 — 앱 버전 2026.11.25
 // 인터넷이 되면 새 파일을 먼저 받아오고(자동 업데이트), 3초 안에 안 오거나 오프라인이면 저장해 둔 파일로 엽니다.
-const CACHE = 'enose-2026.11.23';
+const CACHE = 'enose-2026.11.25';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 const WAIT = 3000;
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
